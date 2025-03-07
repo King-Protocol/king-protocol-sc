@@ -2,11 +2,7 @@ import { ethers } from "ethers";
 
 import { MetaTransactionData } from "@safe-global/safe-core-sdk-types";
 
-import {
-  KING_PROTOCOL_PROXY,
-  KING_PROTOCOL_CORE_IMPL,
-  KING_PROTOCOL_DUMMY_IMPL,
-} from "./lib/const";
+import { KING_PROTOCOL_PROXY, KING_PROTOCOL_CORE_IMPL } from "./lib/const";
 import { proposeBatch } from "./lib/proposeBatch";
 
 export async function rename() {
@@ -21,7 +17,7 @@ export async function rename() {
   const dummyIface = new ethers.utils.Interface(dummyAbi);
 
   const upgradeToDummyData = adminIface.encodeFunctionData("upgradeToAndCall", [
-    KING_PROTOCOL_DUMMY_IMPL,
+    "0x8E029cEDC7Daf4d9cFFe56AC6771dE266F3CCAdc",
     "0x",
   ]);
 
