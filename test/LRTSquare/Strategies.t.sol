@@ -35,7 +35,7 @@ contract LRTSquaredStrategiesTest is Test {
     BoringVaultPriceProvider boringVaultPriceProvider;
 
     function setUp() public {
-        string memory mainnet = "https://eth-pokt.nodies.app";
+        string memory mainnet = vm.envString("MAINNET_RPC");
         vm.createSelectFork(mainnet);
 
         vm.startPrank(owner);
@@ -80,8 +80,14 @@ contract LRTSquaredStrategiesTest is Test {
         });
 
         priceProvider.setTokenConfig(tokens, priceProviderConfig);
-        lrtSquared.registerToken(tokens[0], HUNDRED_PERCENT_LIMIT);
-        lrtSquared.registerToken(tokens[1], HUNDRED_PERCENT_LIMIT);
+        
+        // Only register tokens if they are not already registered
+        if (!lrtSquared.isTokenRegistered(tokens[0])) {
+            lrtSquared.registerToken(tokens[0], HUNDRED_PERCENT_LIMIT);
+        }
+        if (!lrtSquared.isTokenRegistered(tokens[1])) {
+            lrtSquared.registerToken(tokens[1], HUNDRED_PERCENT_LIMIT);
+        }
 
         // TODO: Remove this when the contracts are upgraded on Mainnet
         // Upgrade LRT2 contracts to support this
