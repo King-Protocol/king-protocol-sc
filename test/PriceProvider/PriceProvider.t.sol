@@ -30,7 +30,7 @@ contract PriceProviderTest is Test {
     PriceProvider.Config maticConfig;
 
     function setUp() public {
-        string memory mainnet = "https://eth-pokt.nodies.app";
+        string memory mainnet = vm.envString("MAINNET_RPC");
         vm.createSelectFork(mainnet);
 
         vm.startPrank(governor);

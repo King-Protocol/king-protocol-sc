@@ -14,10 +14,11 @@ contract DeployEEigenStrategy is Utils {
         string memory deployments = readDeploymentFile();
         address priceProvider =
             stdJson.readAddress(deployments, string.concat(".", "addresses", ".", "priceProviderProxy"));
+        address vault = stdJson.readAddress(deployments, string.concat(".", "addresses", ".", "lrtSquaredProxy"));
 
         vm.startBroadcast(deployerPrivateKey);
 
-        strategy = new EEigenStrategy(priceProvider);
+        strategy = new EEigenStrategy(vault, priceProvider);
 
         vm.stopBroadcast();
     }

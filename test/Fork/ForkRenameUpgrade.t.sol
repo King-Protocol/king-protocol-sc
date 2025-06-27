@@ -25,9 +25,9 @@ contract ForkRenameUpgrade is Utils {
 
     function setUp() public {
         console.log("Setting up test...");
-        string memory mainnet = "https://eth-pokt.nodies.app";
+        string memory mainnet = vm.envString("MAINNET_RPC");
         vm.createSelectFork(mainnet);
-        console.log("Fork created successfully on URL: %s", mainnet);
+        console.log("Fork created successfully");
 
         // Mock the initial state to simulate pre-upgrade conditions
         // This is necessary because the upgrade has already been deployed on mainnet

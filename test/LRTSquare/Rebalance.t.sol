@@ -33,7 +33,7 @@ contract LRTSquaredRebalanceTest is LRTSquaredTestSetup {
     PriceProvider.Config ethConfig;
 
     function setUp() public override {
-        string memory mainnet = "https://eth-pokt.nodies.app";
+        string memory mainnet = vm.envString("MAINNET_RPC");
         vm.createSelectFork(mainnet);
 
         super.setUp();

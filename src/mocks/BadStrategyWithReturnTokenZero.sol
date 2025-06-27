@@ -24,7 +24,7 @@ contract BadStrategyWithReturnTokenZero is BaseStrategy {
     ERC20 public constant E_EIGEN = ERC20(0xE77076518A813616315EaAba6cA8e595E845EeE9);
     ERC20 public constant EIGEN = ERC20(0xec53bF9167f50cDEB3Ae105f56099aaaB9061F83);
 
-    constructor(address _priceProvider) BaseStrategy(_priceProvider) {}
+    constructor(address _vault, address _priceProvider) BaseStrategy(_vault, _priceProvider) {}
 
     function _deposit(address token, uint256 amount, uint256 maxSlippageInBps) internal override {
         uint256 minReturn =
@@ -49,7 +49,12 @@ contract BadStrategyWithReturnTokenZero is BaseStrategy {
         return amount.mulDiv(eigenPrice, eEigenPrice);
     }
 
-    function returnToken() external pure override returns (address) {
+    function returnToken() public pure override returns (address) {
         return address(0);
+    }
+
+    function initiateWithdrawal(uint256) external pure override {
+        // Mock implementation - not supported
+        revert("Withdrawals not supported");
     }
 }

@@ -144,7 +144,27 @@ contract LRTSquaredTestSetup is Utils {
             )
         );
 
-        bytes memory data = abi.encodeWithSelector(ILRTSquared.registerToken.selector, token, tokenMaxPercentage);
+        bytes memory data =
+            abi.encodeWithSelector(bytes4(keccak256("registerToken(address,uint64)")), token, tokenMaxPercentage);
+
+        _executeGovernance(data, description, revertData);
+    }
+
+    function _registerTokenWithType(
+        address token,
+        uint256 tokenMaxPercentage,
+        ILRTSquared.TokenType tokenType,
+        bytes memory revertData
+    ) internal {
+        string memory description = string(
+            abi.encodePacked(
+                "Proposal: Register token with type: ", vm.toString(token), " at time ", vm.toString(block.timestamp)
+            )
+        );
+
+        bytes memory data = abi.encodeWithSelector(
+            bytes4(keccak256("registerToken(address,uint64,uint8)")), token, tokenMaxPercentage, tokenType
+        );
 
         _executeGovernance(data, description, revertData);
     }
