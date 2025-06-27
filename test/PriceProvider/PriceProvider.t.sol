@@ -7,9 +7,7 @@ import {IAggregatorV3} from "../../src/interfaces/IAggregatorV3.sol";
 import {UUPSProxy} from "../../src/UUPSProxy.sol";
 
 interface IWeETH {
-    function getEETHByWeETH(
-        uint256 _weETHAmount
-    ) external view returns (uint256);
+    function getEETHByWeETH(uint256 _weETHAmount) external view returns (uint256);
 }
 
 contract PriceProviderTest is Test {
@@ -30,17 +28,15 @@ contract PriceProviderTest is Test {
     PriceProvider.Config btcConfig;
     PriceProvider.Config ethConfig;
     PriceProvider.Config maticConfig;
+
     function setUp() public {
-        string memory mainnet = "https://eth-pokt.nodies.app";
+        string memory mainnet = vm.envString("MAINNET_RPC");
         vm.createSelectFork(mainnet);
 
         vm.startPrank(governor);
         weETHConfig = PriceProvider.Config({
             oracle: weETHOracle,
-            priceFunctionCalldata: abi.encodeWithSelector(
-                IWeETH.getEETHByWeETH.selector,
-                1000000000000000000
-            ),
+            priceFunctionCalldata: abi.encodeWithSelector(IWeETH.getEETHByWeETH.selector, 1000000000000000000),
             isChainlinkType: false,
             oraclePriceDecimals: 18,
             maxStaleness: 0,
@@ -82,8 +78,7 @@ contract PriceProviderTest is Test {
         initialTokens[0] = weETH;
         initialTokens[1] = btc;
 
-        PriceProvider.Config[]
-            memory initialTokensConfig = new PriceProvider.Config[](2);
+        PriceProvider.Config[] memory initialTokensConfig = new PriceProvider.Config[](2);
         initialTokensConfig[0] = weETHConfig;
         initialTokensConfig[1] = btcConfig;
 
@@ -91,12 +86,9 @@ contract PriceProviderTest is Test {
         priceProvider = PriceProvider(
             address(
                 new UUPSProxy(
-                    priceProviderImpl, 
+                    priceProviderImpl,
                     abi.encodeWithSelector(
-                        PriceProvider.initialize.selector,
-                        governor,
-                        initialTokens,
-                        initialTokensConfig
+                        PriceProvider.initialize.selector, governor, initialTokens, initialTokensConfig
                     )
                 )
             )
@@ -114,9 +106,7 @@ contract PriceProviderTest is Test {
         address[] memory tokens = new address[](1);
         tokens[0] = eth;
 
-        PriceProvider.Config[] memory tokensConfig = new PriceProvider.Config[](
-            1
-        );
+        PriceProvider.Config[] memory tokensConfig = new PriceProvider.Config[](1);
         tokensConfig[0] = ethConfig;
 
         vm.prank(governor);
@@ -132,11 +122,10 @@ contract PriceProviderTest is Test {
     }
 
     function test_BtcEthOracle() public view {
-        (, int256 ans, , , ) = IAggregatorV3(btcEthOracle).latestRoundData();
+        (, int256 ans,,,) = IAggregatorV3(btcEthOracle).latestRoundData();
         uint256 oracleDecimals = IAggregatorV3(btcEthOracle).decimals();
 
-        uint256 finalPrice = (uint256(ans) * 10 ** priceProvider.decimals()) /
-            10 ** oracleDecimals;
+        uint256 finalPrice = (uint256(ans) * 10 ** priceProvider.decimals()) / 10 ** oracleDecimals;
         assertEq(priceProvider.getPriceInEth(btc), finalPrice);
     }
 
@@ -145,9 +134,7 @@ contract PriceProviderTest is Test {
         tokens[0] = eth;
         tokens[1] = matic;
 
-        PriceProvider.Config[] memory tokensConfig = new PriceProvider.Config[](
-            2
-        );
+        PriceProvider.Config[] memory tokensConfig = new PriceProvider.Config[](2);
         tokensConfig[0] = ethConfig;
         tokensConfig[1] = maticConfig;
 
@@ -156,18 +143,16 @@ contract PriceProviderTest is Test {
         emit PriceProvider.TokenConfigSet(tokens, tokensConfig);
         priceProvider.setTokenConfig(tokens, tokensConfig);
 
-        (, int256 maticAns, , , ) = IAggregatorV3(maticUsdOracle)
-            .latestRoundData();
+        (, int256 maticAns,,,) = IAggregatorV3(maticUsdOracle).latestRoundData();
         uint256 maticPrice = uint256(maticAns);
         uint256 maticOracleDecimals = IAggregatorV3(maticUsdOracle).decimals();
 
-        (, int256 ethAns, , , ) = IAggregatorV3(ethUsdOracle).latestRoundData();
+        (, int256 ethAns,,,) = IAggregatorV3(ethUsdOracle).latestRoundData();
         uint256 ethPrice = uint256(ethAns);
         uint256 ethOracleDecimals = IAggregatorV3(ethUsdOracle).decimals();
 
-        uint256 finalPrice = (
-            (maticPrice * 10 ** (priceProvider.decimals() + ethOracleDecimals))
-        ) / (ethPrice * 10 ** maticOracleDecimals);
+        uint256 finalPrice = ((maticPrice * 10 ** (priceProvider.decimals() + ethOracleDecimals)))
+            / (ethPrice * 10 ** maticOracleDecimals);
 
         assertEq(priceProvider.getPriceInEth(matic), finalPrice);
     }

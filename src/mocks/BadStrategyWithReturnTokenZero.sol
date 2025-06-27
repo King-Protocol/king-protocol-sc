@@ -8,7 +8,10 @@ import {BaseStrategy} from "../strategies/BaseStrategy.sol";
 import {IPriceProvider} from "../interfaces/IPriceProvider.sol";
 
 interface ITellerWithMultiAssetSupport {
-    function deposit(ERC20 depositAsset, uint256 depositAmount, uint256 minimumMint) external payable returns (uint256 shares);
+    function deposit(ERC20 depositAsset, uint256 depositAmount, uint256 minimumMint)
+        external
+        payable
+        returns (uint256 shares);
 }
 
 // Return token is address(0)
@@ -17,25 +20,15 @@ contract BadStrategyWithReturnTokenZero is BaseStrategy {
     using SafeERC20 for ERC20;
 
     ITellerWithMultiAssetSupport public constant E_EIGEN_TELLER =
-        ITellerWithMultiAssetSupport(
-            0x63b2B0528376d1B34Ed8c9FF61Bd67ab2C8c2Bb0
-        );
-    ERC20 public constant E_EIGEN =
-        ERC20(0xE77076518A813616315EaAba6cA8e595E845EeE9);
-    ERC20 public constant EIGEN =
-        ERC20(0xec53bF9167f50cDEB3Ae105f56099aaaB9061F83);
+        ITellerWithMultiAssetSupport(0x63b2B0528376d1B34Ed8c9FF61Bd67ab2C8c2Bb0);
+    ERC20 public constant E_EIGEN = ERC20(0xE77076518A813616315EaAba6cA8e595E845EeE9);
+    ERC20 public constant EIGEN = ERC20(0xec53bF9167f50cDEB3Ae105f56099aaaB9061F83);
 
-    constructor(address _priceProvider) BaseStrategy(_priceProvider) {}
+    constructor(address _vault, address _priceProvider) BaseStrategy(_vault, _priceProvider) {}
 
-    function _deposit(
-        address token,
-        uint256 amount,
-        uint256 maxSlippageInBps
-    ) internal override {
-        uint256 minReturn = eEigenForEigen(amount).mulDiv(
-            HUNDRED_PERCENT_IN_BPS - maxSlippageInBps,
-            HUNDRED_PERCENT_IN_BPS
-        );
+    function _deposit(address token, uint256 amount, uint256 maxSlippageInBps) internal override {
+        uint256 minReturn =
+            eEigenForEigen(amount).mulDiv(HUNDRED_PERCENT_IN_BPS - maxSlippageInBps, HUNDRED_PERCENT_IN_BPS);
         if (minReturn == 0) revert MinReturnCannotBeZero();
 
         uint256 balBefore = E_EIGEN.balanceOf(address(this));
@@ -46,12 +39,7 @@ contract BadStrategyWithReturnTokenZero is BaseStrategy {
         uint256 balAfter = E_EIGEN.balanceOf(address(this));
         if (balAfter - balBefore < minReturn) revert ReturnLessThanMinReturn();
 
-        emit DepositToStrategy(
-            token,
-            amount,
-            address(E_EIGEN),
-            balAfter - balBefore
-        );
+        emit DepositToStrategy(token, amount, address(E_EIGEN), balAfter - balBefore);
     }
 
     function eEigenForEigen(uint256 amount) internal view returns (uint256) {
@@ -64,4 +52,10 @@ contract BadStrategyWithReturnTokenZero is BaseStrategy {
     function returnToken() external pure override returns (address) {
         return address(0);
     }
+
+    function initiateWithdrawal(uint256) external pure override {
+        // Mock implementation - not supported
+        revert("Withdrawals not supported");
+    }
+
 }

@@ -16,10 +16,14 @@ contract DeploySEthFiStrategy is Utils {
             deployments,
             string.concat(".", "addresses", ".", "priceProviderProxy")
         );
+        address vault = stdJson.readAddress(
+            deployments,
+            string.concat(".", "addresses", ".", "lrtSquaredProxy")
+        );
 
         vm.startBroadcast(deployerPrivateKey);
 
-        strategy = new SEthFiStrategy(priceProvider);
+        strategy = new SEthFiStrategy(vault, priceProvider);
 
         vm.stopBroadcast();
     }    
