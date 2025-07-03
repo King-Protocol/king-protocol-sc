@@ -15,6 +15,7 @@ build_info = true
 extra_output = ["storageLayout"]
 gas_reports = ["*"]
 fs_permissions = [{ access = "read-write", path = "./" }]
+dot_env = ".env"
 
 [rpc_endpoints]
 mainnet = "${MAINNET_RPC}"
