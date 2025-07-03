@@ -58,11 +58,14 @@ contract BoringVaultPriceProviderTest is Test {
     }
 
     function test_CannotSetUnderlyingTokenIfPriceProviderIsNotConfigured() public {
+        // Use a random token that doesn't have an oracle configured
+        address randomToken = address(0x1234567890123456789012345678901234567890);
+        
         address[] memory vaultTokens = new address[](1);
-        vaultTokens[0] = eigen;
+        vaultTokens[0] = eEigen;  // Use eEigen as vault token
 
         address[] memory underlyingTokens = new address[](1);
-        underlyingTokens[0] = eEigen;
+        underlyingTokens[0] = randomToken;  // Use a token without oracle
 
         uint8[] memory priceDecimals = new uint8[](1);
         priceDecimals[0] = 18;

@@ -44,7 +44,7 @@ contract ForkAddToStrategies is Test, GnosisHelpers {
     uint64 HUNDRED_PERCENT_LIMIT = 1_000_000_000;
 
     function setUp() public {
-        string memory mainnet = "https://eth-pokt.nodies.app";
+        string memory mainnet = vm.envString("MAINNET_RPC");
         vm.createSelectFork(mainnet);
     }
 
@@ -79,11 +79,16 @@ contract ForkAddToStrategies is Test, GnosisHelpers {
         string memory priceProviderSetConfig = iToHex(abi.encodeWithSignature("setTokenConfig(address[],(address,bytes,bool,uint8,uint24,uint8,bool)[])", tokens, priceProviderConfig));
         gnosisTx = string(abi.encodePacked(gnosisTx, _getGnosisTransaction(addressToHex(priceProvider), priceProviderSetConfig, false)));
 
-        string memory registerSEthFiToken = iToHex(abi.encodeWithSignature("registerToken(address,uint64)", sEthFi, HUNDRED_PERCENT_LIMIT));
-        gnosisTx = string(abi.encodePacked(gnosisTx, _getGnosisTransaction(addressToHex(lrtSquared), registerSEthFiToken, false)));
+        // Only register tokens if they are not already registered
+        if (!ILRTSquared(lrtSquared).isTokenRegistered(sEthFi)) {
+            string memory registerSEthFiToken = iToHex(abi.encodeWithSignature("registerToken(address,uint64)", sEthFi, HUNDRED_PERCENT_LIMIT));
+            gnosisTx = string(abi.encodePacked(gnosisTx, _getGnosisTransaction(addressToHex(lrtSquared), registerSEthFiToken, false)));
+        }
         
-        string memory registerEEigenToken = iToHex(abi.encodeWithSignature("registerToken(address,uint64)", eEigen, HUNDRED_PERCENT_LIMIT));
-        gnosisTx = string(abi.encodePacked(gnosisTx, _getGnosisTransaction(addressToHex(lrtSquared), registerEEigenToken, false)));
+        if (!ILRTSquared(lrtSquared).isTokenRegistered(eEigen)) {
+            string memory registerEEigenToken = iToHex(abi.encodeWithSignature("registerToken(address,uint64)", eEigen, HUNDRED_PERCENT_LIMIT));
+            gnosisTx = string(abi.encodePacked(gnosisTx, _getGnosisTransaction(addressToHex(lrtSquared), registerEEigenToken, false)));
+        }
         
         ILRTSquared.StrategyConfig memory ethFiStrategyConfig = ILRTSquared.StrategyConfig({
             strategyAdapter: address(sEthFiStrategy),
@@ -105,7 +110,7 @@ contract ForkAddToStrategies is Test, GnosisHelpers {
 
         executeGnosisTransactionBundle(path, ILRTSquared(lrtSquared).governor());
 
-        (uint256 price, uint8 decimals) = PriceProvider(priceProvider).getEthUsdPrice();
+        (uint256 price, ) = PriceProvider(priceProvider).getEthUsdPrice();
         console.log(PriceProvider(priceProvider).getPriceInEth(ethFi) * price / 1 ether);
         console.log(PriceProvider(priceProvider).getPriceInEth(sEthFi) * price / 1 ether);
         console.log(PriceProvider(priceProvider).getPriceInEth(eigen) * price / 1 ether);
