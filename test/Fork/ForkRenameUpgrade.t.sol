@@ -32,14 +32,10 @@ contract ForkRenameUpgrade is Utils {
         // Mock the initial state to simulate pre-upgrade conditions
         // This is necessary because the upgrade has already been deployed on mainnet
         vm.mockCall(
-            address(lrtSquaredToken),
-            abi.encodeWithSelector(IERC20Metadata.symbol.selector),
-            abi.encode("LRT2")
+            address(lrtSquaredToken), abi.encodeWithSelector(IERC20Metadata.symbol.selector), abi.encode("LRT2")
         );
         vm.mockCall(
-            address(lrtSquaredToken),
-            abi.encodeWithSelector(IERC20Metadata.name.selector),
-            abi.encode("LRT Squared")
+            address(lrtSquaredToken), abi.encodeWithSelector(IERC20Metadata.name.selector), abi.encode("LRT Squared")
         );
 
         // Fetch initial LRTSquared contract details
@@ -50,7 +46,7 @@ contract ForkRenameUpgrade is Utils {
         name = lrtSquaredToken.name();
         console.log("Initial Token Symbol: %s", symbol);
         console.log("Initial Token Name: %s", name);
-        
+
         // Clear the mocks so the upgrade can proceed normally
         vm.clearMockedCalls();
 
@@ -90,7 +86,6 @@ contract ForkRenameUpgrade is Utils {
             console.log("Upgrade to LRTSquaredCore failed: %s", reason);
             revert(reason);
         }
-
 
         vm.stopPrank();
     }

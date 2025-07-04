@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
-import {LRTSquaredStorage, BucketLimiter, Math, SafeERC20, IERC20, IPriceProvider, ISwapper} from "./LRTSquaredStorage.sol";
+import {
+    LRTSquaredStorage,
+    BucketLimiter,
+    Math,
+    SafeERC20,
+    IERC20,
+    IPriceProvider,
+    ISwapper
+} from "./LRTSquaredStorage.sol";
 import {BaseStrategy} from "../strategies/BaseStrategy.sol";
 
 contract LRTSquaredAdmin is LRTSquaredStorage {
@@ -12,9 +20,10 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
     function whitelistRebalacingOutputToken(address _token, bool _shouldWhitelist) external onlyGovernor {
         if (_token == address(0)) revert InvalidValue();
         if (_shouldWhitelist) {
-            if(!isTokenRegistered(_token)) revert TokenNotRegistered();
-            if (IPriceProvider(priceProvider).getPriceInEth(_token) == 0)
+            if (!isTokenRegistered(_token)) revert TokenNotRegistered();
+            if (IPriceProvider(priceProvider).getPriceInEth(_token) == 0) {
                 revert PriceProviderNotConfigured();
+            }
         }
 
         isWhitelistedRebalanceOutputToken[_token] = _shouldWhitelist;
@@ -35,7 +44,7 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
         if (_swapper == address(0)) revert InvalidValue();
         emit SwapperSet(swapper, _swapper);
         swapper = _swapper;
-    } 
+    }
 
     function rebalance(
         address _fromAsset,
@@ -57,7 +66,9 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
         uint256 vaultTotalValueAfter = _getVaultTokenValuesInEth(totalSupply());
         uint256 toAssetAmountAfter = IERC20(_toAsset).balanceOf(address(this));
 
-        if (toAssetAmountAfter - toAssetAmountBefore < _minToAssetAmount) revert InsufficientTokensReceivedFromSwapper();
+        if (toAssetAmountAfter - toAssetAmountBefore < _minToAssetAmount) {
+            revert InsufficientTokensReceivedFromSwapper();
+        }
         if (vaultTotalValueAfter < vaultTotalValueBefore) {
             uint256 minVaultTotalValueAfter = (vaultTotalValueBefore * maxSlippageForRebalancing) / 1 ether;
             if (vaultTotalValueAfter < minVaultTotalValueAfter) revert ApplicableSlippageGreaterThanMaxLimit();
@@ -71,11 +82,13 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
     function registerToken(address _token, uint64 _positionWeightLimit) external onlyGovernor {
         if (_token == address(0)) revert InvalidValue();
         if (isTokenRegistered(_token)) revert TokenAlreadyRegistered();
-        if (IPriceProvider(priceProvider).getPriceInEth(_token) == 0)
+        if (IPriceProvider(priceProvider).getPriceInEth(_token) == 0) {
             revert PriceProviderNotConfigured();
+        }
         if (_positionWeightLimit > HUNDRED_PERCENT_LIMIT) revert WeightLimitCannotBeGreaterThanHundred();
 
-        _tokenInfos[_token] = TokenInfo({registered: true, whitelisted: true, positionWeightLimit: _positionWeightLimit});
+        _tokenInfos[_token] =
+            TokenInfo({registered: true, whitelisted: true, positionWeightLimit: _positionWeightLimit});
         tokens.push(_token);
 
         emit TokenRegistered(_token);
@@ -91,7 +104,7 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
     function setPauser(address account, bool isPauser) external onlyGovernor {
         if (account == address(0)) revert InvalidValue();
         if (pauser[account] == isPauser) revert AlreadyInSameState();
-        
+
         pauser[account] = isPauser;
         emit PauserSet(account, isPauser);
     }
@@ -101,7 +114,7 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
         emit MaxSlippageForRebalanceSet(maxSlippageForRebalancing, maxSlippage);
         maxSlippageForRebalancing = maxSlippage;
     }
-    
+
     function updateWhitelist(address _token, bool _whitelist) external onlyGovernor {
         if (_token == address(0)) revert InvalidValue();
         if (!isTokenRegistered(_token)) revert TokenNotRegistered();
@@ -120,7 +133,7 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
     function setDepositors(address[] memory depositors, bool[] memory isDepositor) external onlyGovernor {
         uint256 len = depositors.length;
         if (len != isDepositor.length) revert ArrayLengthMismatch();
-        for (uint256 i = 0; i < len; ) {
+        for (uint256 i = 0; i < len;) {
             if (depositors[i] == address(0)) revert InvalidValue();
             depositor[depositors[i]] = isDepositor[i];
 
@@ -138,12 +151,15 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
         priceProvider = _priceProvider;
     }
 
-    function setRateLimitConfig(uint128 __percentageLimit, uint64 __timePeriod, uint128 __refillRate) external onlyGovernor {
+    function setRateLimitConfig(uint128 __percentageLimit, uint64 __timePeriod, uint128 __refillRate)
+        external
+        onlyGovernor
+    {
         uint256 _totalSupply = totalSupply();
         uint128 capactity = uint128(_totalSupply.mulDiv(__percentageLimit, HUNDRED_PERCENT_LIMIT));
         rateLimit = RateLimit({
             limit: BucketLimiter.create(capactity, __refillRate),
-            timePeriod: __timePeriod, 
+            timePeriod: __timePeriod,
             renewTimestamp: uint64(block.timestamp + __timePeriod),
             percentageLimit: __percentageLimit
         });
@@ -159,7 +175,7 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
         emit RefillRateUpdated(rateLimit.limit.refillRate, __refillRate);
         rateLimit.limit.setRefillRate(__refillRate);
     }
-    
+
     function setPercentageRateLimit(uint128 __percentageLimit) external onlyGovernor {
         emit PercentageRateLimitUpdated(rateLimit.percentageLimit, __percentageLimit);
         rateLimit.percentageLimit = __percentageLimit;
@@ -187,16 +203,20 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
 
     function setTokenStrategyConfig(address token, StrategyConfig memory strategyConfig) external onlyGovernor {
         if (token == address(0)) revert InvalidValue();
-        if(!isTokenRegistered(token)) revert TokenNotRegistered();
+        if (!isTokenRegistered(token)) revert TokenNotRegistered();
         if (IPriceProvider(priceProvider).getPriceInEth(token) == 0) revert PriceProviderNotConfigured();
 
         if (strategyConfig.strategyAdapter == address(0)) revert StrategyAdapterCannotBeAddressZero();
-        if (strategyConfig.maxSlippageInBps > MAX_SLIPPAGE_FOR_STRATEGY_IN_BPS) revert SlippageCannotBeGreaterThanMaxLimit();
+        if (strategyConfig.maxSlippageInBps > MAX_SLIPPAGE_FOR_STRATEGY_IN_BPS) {
+            revert SlippageCannotBeGreaterThanMaxLimit();
+        }
 
         address returnToken = BaseStrategy(strategyConfig.strategyAdapter).returnToken();
         if (returnToken == address(0)) revert StrategyReturnTokenCannotBeAddressZero();
-        if(!isTokenRegistered(returnToken)) revert StrategyReturnTokenNotRegistered();
-        if (IPriceProvider(priceProvider).getPriceInEth(returnToken) == 0) revert PriceProviderNotConfiguredForStrategyReturnToken();
+        if (!isTokenRegistered(returnToken)) revert StrategyReturnTokenNotRegistered();
+        if (IPriceProvider(priceProvider).getPriceInEth(returnToken) == 0) {
+            revert PriceProviderNotConfiguredForStrategyReturnToken();
+        }
 
         tokenStrategyConfig[token] = strategyConfig;
         emit StrategyConfigSet(token, strategyConfig.strategyAdapter, strategyConfig.maxSlippageInBps);
@@ -208,30 +228,22 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
 
         if (tokenStrategyConfig[token].strategyAdapter == address(0)) revert TokenStrategyConfigNotSet();
         delegateCall(
-            tokenStrategyConfig[token].strategyAdapter, 
-            abi.encodeWithSelector(BaseStrategy.deposit.selector, token, amount, tokenStrategyConfig[token].maxSlippageInBps)
+            tokenStrategyConfig[token].strategyAdapter,
+            abi.encodeWithSelector(
+                BaseStrategy.deposit.selector, token, amount, tokenStrategyConfig[token].maxSlippageInBps
+            )
         );
 
         _verifyPositionLimits();
     }
 
-    function delegateCall(
-        address target,
-        bytes memory data
-    ) internal returns (bytes memory result) {
+    function delegateCall(address target, bytes memory data) internal returns (bytes memory result) {
         require(target != address(this), "delegatecall to self");
 
         // solhint-disable-next-line no-inline-assembly
         assembly ("memory-safe") {
             // Perform delegatecall to the target contract
-            let success := delegatecall(
-                gas(),
-                target,
-                add(data, 0x20),
-                mload(data),
-                0,
-                0
-            )
+            let success := delegatecall(gas(), target, add(data, 0x20), mload(data), 0, 0)
 
             // Get the size of the returned data
             let size := returndatasize()
@@ -248,9 +260,7 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
             // Update the free memory pointer
             mstore(0x40, add(result, add(0x20, size)))
 
-            if iszero(success) {
-                revert(result, returndatasize())
-            }
+            if iszero(success) { revert(result, returndatasize()) }
         }
     }
 

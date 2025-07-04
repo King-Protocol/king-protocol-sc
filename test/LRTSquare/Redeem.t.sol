@@ -38,22 +38,16 @@ contract LRTSquaredRedeemTest is LRTSquaredTestSetup {
         _amounts.push(50 * 10 ** tokenDecimals[1]);
         _amounts.push(25 * 10 ** tokenDecimals[2]);
 
-        uint256 totalValueInEthAfterDeposit = _getTokenValuesInEth(
-            _tokenIndices,
-            _amounts
-        );
+        uint256 totalValueInEthAfterDeposit = _getTokenValuesInEth(_tokenIndices, _amounts);
         sharesAlloted = totalValueInEthAfterDeposit;
         uint256 fee = sharesAlloted.mulDiv(depositFeeInBps, HUNDRED_PERCENT_IN_BPS);
         sharesAlloted -= fee;
 
         vm.startPrank(alice);
-        for (uint256 i = 0; i < _tokens.length; ) {
+        for (uint256 i = 0; i < _tokens.length;) {
             deal(_tokens[i], alice, _amounts[i]);
 
-            IERC20(_tokens[i]).safeIncreaseAllowance(
-                address(lrtSquared),
-                _amounts[i]
-            );
+            IERC20(_tokens[i]).safeIncreaseAllowance(address(lrtSquared), _amounts[i]);
             unchecked {
                 ++i;
             }
@@ -78,7 +72,7 @@ contract LRTSquaredRedeemTest is LRTSquaredTestSetup {
 
         uint256 fee = sharesAlloted.mulDiv(redeemFeeInBps, HUNDRED_PERCENT_IN_BPS);
         uint256 burnShares = sharesAlloted - fee;
-        
+
         vm.prank(alice);
         vm.expectEmit(true, true, true, false);
         emit ILRTSquared.Redeem(alice, burnShares, fee, _tokens, _amounts);

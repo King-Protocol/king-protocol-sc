@@ -13,12 +13,12 @@ abstract contract BaseStrategy {
     error MinReturnCannotBeZero();
     error TokenCannotBeZeroAddress();
 
-    constructor (address _priceProvider) {
+    constructor(address _priceProvider) {
         priceProvider = IPriceProvider(_priceProvider);
     }
 
     function returnToken() external view virtual returns (address);
-    
+
     function deposit(address token, uint256 amount, uint256 maxSlippageInBps) external sanity(token) {
         _deposit(token, amount, maxSlippageInBps);
     }

@@ -17,7 +17,7 @@ contract LRTSquaredRebalanceTest is LRTSquaredTestSetup {
     using SafeERC20 for IERC20;
 
     Swapper1InchV6 swapper1Inch;
-    
+
     address swapRouter1InchV6 = 0x111111125421cA6dc452d289314280a0f8842A65;
     address weETH = 0xCd5fE23C85820F7B72D0926FC9b05b43E359b7ee;
     address btc = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
@@ -44,15 +44,11 @@ contract LRTSquaredRebalanceTest is LRTSquaredTestSetup {
 
         swapper1Inch = new Swapper1InchV6(swapRouter1InchV6);
 
-
         vm.startPrank(address(timelock));
 
         weETHConfig = PriceProvider.Config({
             oracle: weETHOracle,
-            priceFunctionCalldata: abi.encodeWithSelector(
-                IWeETH.getEETHByWeETH.selector,
-                1000000000000000000
-            ),
+            priceFunctionCalldata: abi.encodeWithSelector(IWeETH.getEETHByWeETH.selector, 1000000000000000000),
             isChainlinkType: false,
             oraclePriceDecimals: 18,
             maxStaleness: 0,
@@ -94,23 +90,20 @@ contract LRTSquaredRebalanceTest is LRTSquaredTestSetup {
         oracle = IPriceProvider(
             address(
                 new UUPSProxy(
-                    priceProviderImpl, 
+                    priceProviderImpl,
                     abi.encodeWithSelector(
-                        PriceProvider.initialize.selector,
-                        address(timelock),
-                        initialTokens,
-                        initialTokensConfig
+                        PriceProvider.initialize.selector, address(timelock), initialTokens, initialTokensConfig
                     )
                 )
             )
         );
-        
+
         address[] memory depositors = new address[](1);
         depositors[0] = alice;
         bool[] memory isDepositor = new bool[](1);
         isDepositor[0] = true;
 
-        lrtSquared.setDepositors(depositors, isDepositor); 
+        lrtSquared.setDepositors(depositors, isDepositor);
         lrtSquared.updatePriceProvider(address(oracle));
         lrtSquared.registerToken(assets[0], lrtSquared.HUNDRED_PERCENT_LIMIT());
         lrtSquared.registerToken(assets[1], lrtSquared.HUNDRED_PERCENT_LIMIT());
@@ -138,7 +131,7 @@ contract LRTSquaredRebalanceTest is LRTSquaredTestSetup {
 
         vm.stopPrank();
 
-        // Rebalance funds to include some BTC 
+        // Rebalance funds to include some BTC
         vm.prank(address(timelock));
         lrtSquared.whitelistRebalacingOutputToken(btc, true);
 
@@ -163,7 +156,7 @@ contract LRTSquaredRebalanceTest is LRTSquaredTestSetup {
 
         uint256 vaultWeEthBalAfter = IERC20(weETH).balanceOf(address(lrtSquared));
         uint256 vaultBtcBalAfter = IERC20(btc).balanceOf(address(lrtSquared));
-       
+
         assertEq(vaultWeEthBalAfter, depositAmt - rebalanceAmount);
         assertGt(vaultBtcBalAfter, 0);
     }
@@ -211,7 +204,7 @@ contract LRTSquaredRebalanceTest is LRTSquaredTestSetup {
         vm.prank(alice);
         vm.expectRevert(Governable.OnlyGovernor.selector);
         lrtSquared.whitelistRebalacingOutputToken(weETH, true);
-        
+
         vm.prank(address(timelock));
         vm.expectEmit(true, true, true, true);
         emit ILRTSquared.WhitelistRebalanceOutputToken(weETH, true);

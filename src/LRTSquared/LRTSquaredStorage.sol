@@ -4,7 +4,8 @@ pragma solidity ^0.8.25;
 import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {ERC20PermitUpgradeable} from "@openzeppelin-upgradeable/contracts/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
+import {ERC20PermitUpgradeable} from
+    "@openzeppelin-upgradeable/contracts/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import {UUPSUpgradeable, Initializable} from "@openzeppelin-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {IPriceProvider} from "src/interfaces/IPriceProvider.sol";
 import {Governable} from "../governance/Governable.sol";
@@ -63,24 +64,24 @@ contract LRTSquaredStorage is
     uint64 public constant HUNDRED_PERCENT_LIMIT = 1_000_000_000;
     uint64 public constant HUNDRED_PERCENT_IN_BPS = 10000;
 
-    mapping(address => TokenInfo) internal _tokenInfos; 
+    mapping(address => TokenInfo) internal _tokenInfos;
     // only whitelisted depositors can deposit tokens into the vault
-    mapping(address => bool) public depositor; 
+    mapping(address => bool) public depositor;
     // address of accepted tokens
     address[] public tokens;
     // address of the price provider
     address public priceProvider;
     // rate limit on deposit amount
-    RateLimit internal rateLimit; 
+    RateLimit internal rateLimit;
     // address of the rebalancer
-    address public rebalancer; 
+    address public rebalancer;
     // tokens that are whitelisted as swap output tokens can only be the output of rebalancing
-    mapping(address swapOutputTokens => bool isWhitelisted) public isWhitelistedRebalanceOutputToken; 
+    mapping(address swapOutputTokens => bool isWhitelisted) public isWhitelistedRebalanceOutputToken;
     // max slippage acceptable when we rebalance (in 18 decimals)
-    uint256 public maxSlippageForRebalancing; 
-    // Swapper is a helper contract that helps us swap funds in the vault and rebalance 
-    address public swapper; 
-    // Swapper is a helper contract that helps us swap funds in the vault and rebalance 
+    uint256 public maxSlippageForRebalancing;
+    // Swapper is a helper contract that helps us swap funds in the vault and rebalance
+    address public swapper;
+    // Swapper is a helper contract that helps us swap funds in the vault and rebalance
     mapping(address => bool) public pauser;
     // deposit amount for community pause in Eth
     uint256 public depositForCommunityPause;
@@ -89,8 +90,8 @@ contract LRTSquaredStorage is
     // fee struct
     Fee public fee;
     // strategy config for tokens
-    mapping (address token => StrategyConfig strategyConfig) public tokenStrategyConfig;
-    // max slippage for strategy = 1% 
+    mapping(address token => StrategyConfig strategyConfig) public tokenStrategyConfig;
+    // max slippage for strategy = 1%
     uint256 public constant MAX_SLIPPAGE_FOR_STRATEGY_IN_BPS = 100;
     // keccak256("LRTSquared.admin.impl");
     bytes32 constant adminImplPosition = 0x67f3bdb99ec85305417f06f626cf52c7dee7e44607664b5f1cce0af5d822472f;
@@ -99,7 +100,14 @@ contract LRTSquaredStorage is
     event TokenWhitelisted(address token, bool whitelisted);
     event PriceProviderSet(address oldPriceProvider, address newPriceProvider);
     event DepositorsSet(address[] accounts, bool[] isDepositor);
-    event Deposit(address indexed sender, address indexed recipient, uint256 sharesMinted, uint256 fee, address[] tokens, uint256[] amounts);
+    event Deposit(
+        address indexed sender,
+        address indexed recipient,
+        uint256 sharesMinted,
+        uint256 fee,
+        address[] tokens,
+        uint256[] amounts
+    );
     event Redeem(address indexed account, uint256 sharesRedeemed, uint256 fee, address[] tokens, uint256[] amounts);
     event CommunityPauseDepositSet(uint256 oldAmount, uint256 newAmount);
     event CommunityPause(address indexed pauser);
@@ -113,7 +121,7 @@ contract LRTSquaredStorage is
     event MaxSlippageForRebalanceSet(uint256 oldMaxSlippage, uint256 newMaxSlippage);
     event WhitelistRebalanceOutputToken(address token, bool whitelisted);
     event SwapperSet(address oldSwapper, address newSwapper);
-    event Rebalance(address fromAsset, address toAsset, uint256 fromAssetAmount,uint256 toAssetAmount);
+    event Rebalance(address fromAsset, address toAsset, uint256 fromAssetAmount, uint256 toAssetAmount);
     event FeeSet(Fee oldFee, Fee newFee);
     event TreasurySet(address oldTreasury, address newTreasury);
     event StrategyConfigSet(address indexed token, address indexed strategyAdapter, uint96 maxSlippageInBps);
@@ -152,7 +160,7 @@ contract LRTSquaredStorage is
     error StrategyReturnTokenNotRegistered();
     error PriceProviderNotConfiguredForStrategyReturnToken();
     error SharesCannotBeZero();
-    
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -186,30 +194,21 @@ contract LRTSquaredStorage is
         return _tokenInfos[token];
     }
 
-    function _getVaultTokenValuesInEth(
-        uint256 vaultTokenShares
-    ) internal view returns (uint256) {
+    function _getVaultTokenValuesInEth(uint256 vaultTokenShares) internal view returns (uint256) {
         uint256 totalSupply = totalSupply();
         if (totalSupply == 0) return 0;
 
-        (
-            address[] memory assets,
-            uint256[] memory assetAmounts
-        ) = totalAssets();
+        (address[] memory assets, uint256[] memory assetAmounts) = totalAssets();
 
         uint256 totalValue = getTokenValuesInEth(assets, assetAmounts);
         return (totalValue * vaultTokenShares) / totalSupply;
     }
 
-    function totalAssets()
-        public
-        view
-        returns (address[] memory, uint256[] memory)
-    {
+    function totalAssets() public view returns (address[] memory, uint256[] memory) {
         address[] memory assets = tokens;
         uint256 len = assets.length;
         uint256[] memory assetAmounts = new uint256[](len);
-        for (uint256 i = 0; i < len; ) {
+        for (uint256 i = 0; i < len;) {
             assetAmounts[i] = IERC20(assets[i]).balanceOf(address(this));
             unchecked {
                 ++i;
@@ -219,21 +218,16 @@ contract LRTSquaredStorage is
         return (assets, assetAmounts);
     }
 
-    function getTokenValuesInEth(
-        address[] memory _tokens,
-        uint256[] memory _amounts
-    ) public view returns (uint256) {
+    function getTokenValuesInEth(address[] memory _tokens, uint256[] memory _amounts) public view returns (uint256) {
         uint256 total_eth = 0;
         uint256 len = _tokens.length;
 
         if (len != _amounts.length) revert ArrayLengthMismatch();
 
-        for (uint256 i = 0; i < _tokens.length; ) {
+        for (uint256 i = 0; i < _tokens.length;) {
             if (!isTokenRegistered(_tokens[i])) revert TokenNotRegistered();
 
-            uint256 price = IPriceProvider(priceProvider).getPriceInEth(
-                _tokens[i]
-            );
+            uint256 price = IPriceProvider(priceProvider).getPriceInEth(_tokens[i]);
             if (price == 0) revert PriceProviderFailed();
             total_eth += (_amounts[i] * price) / 10 ** _getDecimals(_tokens[i]);
 
@@ -244,17 +238,13 @@ contract LRTSquaredStorage is
         return total_eth;
     }
 
-    function getTokenTotalValuesInEth(
-        address token
-    ) public view returns (uint256) {
-        uint256 price = IPriceProvider(priceProvider).getPriceInEth(
-            token
-        );
+    function getTokenTotalValuesInEth(address token) public view returns (uint256) {
+        uint256 price = IPriceProvider(priceProvider).getPriceInEth(token);
         if (price == 0) revert PriceProviderFailed();
 
-        return (IERC20(token).balanceOf(address(this)) * IPriceProvider(priceProvider).getPriceInEth(token)) / 10 ** _getDecimals(token);
+        return (IERC20(token).balanceOf(address(this)) * IPriceProvider(priceProvider).getPriceInEth(token))
+            / 10 ** _getDecimals(token);
     }
-
 
     function _getDecimals(address erc20) internal view returns (uint8) {
         return IERC20Metadata(erc20).decimals();
@@ -264,11 +254,12 @@ contract LRTSquaredStorage is
         uint256 len = tokens.length;
         uint256 vaultTotalValue = _getVaultTokenValuesInEth(totalSupply());
 
-        if(vaultTotalValue == 0) return;
+        if (vaultTotalValue == 0) return;
 
-        for (uint256 i = 0; i < len; ) {
-            if (_getPositionWeight(tokens[i], vaultTotalValue) > _tokenInfos[tokens[i]].positionWeightLimit) 
-                revert TokenWeightLimitBreached(); 
+        for (uint256 i = 0; i < len;) {
+            if (_getPositionWeight(tokens[i], vaultTotalValue) > _tokenInfos[tokens[i]].positionWeightLimit) {
+                revert TokenWeightLimitBreached();
+            }
 
             unchecked {
                 ++i;
@@ -282,17 +273,16 @@ contract LRTSquaredStorage is
     }
 
     function _withdrawEth(address recipient, uint256 amount) internal {
-        (bool success, ) = payable(recipient).call{value: amount}("");
+        (bool success,) = payable(recipient).call{value: amount}("");
         if (!success) revert EtherTransferFailed();
     }
 
     function _setFee(Fee memory _fee) internal {
         if (
-            _fee.treasury == address(0) || 
-            _fee.depositFeeInBps > HUNDRED_PERCENT_IN_BPS || 
-            _fee.redeemFeeInBps > HUNDRED_PERCENT_IN_BPS
+            _fee.treasury == address(0) || _fee.depositFeeInBps > HUNDRED_PERCENT_IN_BPS
+                || _fee.redeemFeeInBps > HUNDRED_PERCENT_IN_BPS
         ) revert InvalidValue();
-        
+
         emit FeeSet(fee, _fee);
         fee = _fee;
     }

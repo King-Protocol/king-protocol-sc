@@ -26,7 +26,7 @@ interface IPriceProvider {
 
     /// @notice Get the price of ETH in USD
     function getEthUsdPrice() external view returns (uint256, uint8);
-    
+
     /// @notice Set the price of the token in ETH (18 decimals)
     function setPrice(address token, uint256 price) external;
 }
@@ -60,7 +60,7 @@ contract LRTSquaredTestSetup is Utils {
 
     uint128 percentageRateLimit = 5_000_000_000; // 500%
     uint256 communityPauseDepositAmt = 100 ether;
-        
+
     uint48 depositFeeInBps = 10;
     uint48 redeemFeeInBps = 10;
 
@@ -121,7 +121,7 @@ contract LRTSquaredTestSetup is Utils {
             "LRT2",
             address(timelock),
             pauser,
-            rebalancer, 
+            rebalancer,
             swapper,
             address(priceProvider),
             percentageRateLimit,
@@ -140,27 +140,16 @@ contract LRTSquaredTestSetup is Utils {
     function _registerToken(address token, uint256 tokenMaxPercentage, bytes memory revertData) internal {
         string memory description = string(
             abi.encodePacked(
-                "Proposal: Register token: ",
-                vm.toString(token),
-                " at time ",
-                vm.toString(block.timestamp)
+                "Proposal: Register token: ", vm.toString(token), " at time ", vm.toString(block.timestamp)
             )
         );
 
-        bytes memory data = abi.encodeWithSelector(
-            ILRTSquared.registerToken.selector,
-            token,
-            tokenMaxPercentage
-        );
+        bytes memory data = abi.encodeWithSelector(ILRTSquared.registerToken.selector, token, tokenMaxPercentage);
 
         _executeGovernance(data, description, revertData);
     }
 
-    function _updateWhitelist(
-        address token,
-        bool whitelist,
-        bytes memory revertData
-    ) internal {
+    function _updateWhitelist(address token, bool whitelist, bytes memory revertData) internal {
         string memory description = string(
             abi.encodePacked(
                 "Proposal: Whitelist token: ",
@@ -171,19 +160,12 @@ contract LRTSquaredTestSetup is Utils {
                 vm.toString(block.timestamp)
             )
         );
-        bytes memory data = abi.encodeWithSelector(
-            ILRTSquared.updateWhitelist.selector,
-            token,
-            whitelist
-        );
+        bytes memory data = abi.encodeWithSelector(ILRTSquared.updateWhitelist.selector, token, whitelist);
 
         _executeGovernance(data, description, revertData);
     }
 
-    function _updatePriceProvider(
-        address _priceProvider,
-        bytes memory revertData
-    ) internal {
+    function _updatePriceProvider(address _priceProvider, bytes memory revertData) internal {
         string memory description = string(
             abi.encodePacked(
                 "Proposal: Update price provider: ",
@@ -192,116 +174,69 @@ contract LRTSquaredTestSetup is Utils {
                 vm.toString(block.timestamp)
             )
         );
-        bytes memory data = abi.encodeWithSelector(
-            ILRTSquared.updatePriceProvider.selector,
-            _priceProvider
-        );
+        bytes memory data = abi.encodeWithSelector(ILRTSquared.updatePriceProvider.selector, _priceProvider);
 
         _executeGovernance(data, description, revertData);
     }
 
-    function _setDepositors(
-        address[] memory depositors,
-        bool[] memory isDepositor,
-        bytes memory revertData
-    ) internal {
+    function _setDepositors(address[] memory depositors, bool[] memory isDepositor, bytes memory revertData) internal {
         string memory description = "Proposal: Set depositors";
 
-        bytes memory data = abi.encodeWithSelector(
-            ILRTSquared.setDepositors.selector,
-            depositors,
-            isDepositor
-        );
+        bytes memory data = abi.encodeWithSelector(ILRTSquared.setDepositors.selector, depositors, isDepositor);
 
         _executeGovernance(data, description, revertData);
     }
 
-    function _updateTokenPositionWeightLimit(
-        address token, 
-        uint64 maxPercentage, 
-        bytes memory revertData
-    ) internal {
-        string memory description = string(
-            abi.encodePacked(
-                "Proposal: update token position weight limits for token: ", 
-                vm.toString(token)
-            )
-        );
+    function _updateTokenPositionWeightLimit(address token, uint64 maxPercentage, bytes memory revertData) internal {
+        string memory description =
+            string(abi.encodePacked("Proposal: update token position weight limits for token: ", vm.toString(token)));
 
-        bytes memory data = abi.encodeWithSelector(
-            ILRTSquared.updateTokenPositionWeightLimit.selector,
-            token,
-            maxPercentage
-        );
+        bytes memory data =
+            abi.encodeWithSelector(ILRTSquared.updateTokenPositionWeightLimit.selector, token, maxPercentage);
 
         _executeGovernance(data, description, revertData);
     }
 
-    function _setRateLimitRefillRate(
-        uint128 refillRate,
-        bytes memory revertData
-    ) internal {
+    function _setRateLimitRefillRate(uint128 refillRate, bytes memory revertData) internal {
         string memory description = "Proposal: Set rate limit refill rate";
 
-        bytes memory data = abi.encodeWithSelector(
-            ILRTSquared.setRefillRatePerSecond.selector,
-            refillRate
-        );
+        bytes memory data = abi.encodeWithSelector(ILRTSquared.setRefillRatePerSecond.selector, refillRate);
 
         _executeGovernance(data, description, revertData);
     }
 
-    function _setRateLimitTimePeriod(
-        uint64 timePeriod,
-        bytes memory revertData
-    ) internal {
+    function _setRateLimitTimePeriod(uint64 timePeriod, bytes memory revertData) internal {
         string memory description = "Proposal: Set rate limit time period";
 
-        bytes memory data = abi.encodeWithSelector(
-            ILRTSquared.setRateLimitTimePeriod.selector,
-            timePeriod
-        );
+        bytes memory data = abi.encodeWithSelector(ILRTSquared.setRateLimitTimePeriod.selector, timePeriod);
 
         _executeGovernance(data, description, revertData);
     }
 
-    function _setPercentageRateLimit(
-        uint128 percentageLimit,
-        bytes memory revertData
-    ) internal {
+    function _setPercentageRateLimit(uint128 percentageLimit, bytes memory revertData) internal {
         string memory description = "Proposal: Set rate limit percentage";
 
-        bytes memory data = abi.encodeWithSelector(
-            ILRTSquared.setPercentageRateLimit.selector,
-            percentageLimit
-        );
+        bytes memory data = abi.encodeWithSelector(ILRTSquared.setPercentageRateLimit.selector, percentageLimit);
 
         _executeGovernance(data, description, revertData);
     }
 
     function _setRateLimitConfig(
-        uint128 __percentageLimit, 
-        uint64 __timePeriod, 
+        uint128 __percentageLimit,
+        uint64 __timePeriod,
         uint128 __refillRate,
         bytes memory revertData
     ) internal {
         string memory description = "Proposal: Set rate limit config";
 
         bytes memory data = abi.encodeWithSelector(
-            ILRTSquared.setRateLimitConfig.selector,
-            __percentageLimit,
-            __timePeriod, 
-            __refillRate
+            ILRTSquared.setRateLimitConfig.selector, __percentageLimit, __timePeriod, __refillRate
         );
 
         _executeGovernance(data, description, revertData);
     }
 
-    function _executeGovernance(
-        bytes memory data,
-        string memory description,
-        bytes memory revertData
-    ) internal {
+    function _executeGovernance(bytes memory data, string memory description, bytes memory revertData) internal {
         address[] memory targets = new address[](1);
         uint256[] memory values = new uint256[](1);
         bytes[] memory calldatas = new bytes[](1);
@@ -311,12 +246,7 @@ contract LRTSquaredTestSetup is Utils {
         values[0] = 0;
         calldatas[0] = data;
 
-        uint256 proposalId = governance.hashProposal(
-            targets,
-            values,
-            calldatas,
-            descriptionHash
-        );
+        uint256 proposalId = governance.hashProposal(targets, values, calldatas, descriptionHash);
 
         uint256 votingDelay = governance.votingDelay();
 
@@ -336,13 +266,7 @@ contract LRTSquaredTestSetup is Utils {
         vm.roll(proposalDeadline);
         governance.queue(targets, values, calldatas, descriptionHash);
 
-        bytes32 id = timelock.hashOperationBatch(
-            targets,
-            values,
-            calldatas,
-            0,
-            _timelockSalt(descriptionHash)
-        );
+        bytes32 id = timelock.hashOperationBatch(targets, values, calldatas, 0, _timelockSalt(descriptionHash));
 
         uint256 executeTimestamp = timelock.getTimestamp(id) + 1;
 
@@ -353,18 +277,17 @@ contract LRTSquaredTestSetup is Utils {
         vm.stopPrank();
     }
 
-    function _timelockSalt(
-        bytes32 descriptionHash
-    ) private view returns (bytes32) {
+    function _timelockSalt(bytes32 descriptionHash) private view returns (bytes32) {
         return bytes20(address(governance)) ^ descriptionHash;
     }
 
-    function _getTokenValuesInEth(
-        uint256[] memory _tokenIndices,
-        uint256[] memory _amounts
-    ) internal view returns (uint256) {
+    function _getTokenValuesInEth(uint256[] memory _tokenIndices, uint256[] memory _amounts)
+        internal
+        view
+        returns (uint256)
+    {
         uint256 totalAmt = 0;
-        for (uint256 i = 0; i < _tokenIndices.length; ) {
+        for (uint256 i = 0; i < _tokenIndices.length;) {
             totalAmt += (_amounts[i] * tokenPrices[i]) / 10 ** tokenDecimals[i];
             unchecked {
                 ++i;
@@ -374,22 +297,13 @@ contract LRTSquaredTestSetup is Utils {
         return totalAmt;
     }
 
-    function _getAssetForVaultShares(
-        uint256 vaultShare,
-        address asset
-    ) internal view returns (uint256) {
-        return
-            (vaultShare * (IERC20(asset).balanceOf(address(lrtSquared)) + 1)) /
-            (lrtSquared.totalSupply() + 1);
+    function _getAssetForVaultShares(uint256 vaultShare, address asset) internal view returns (uint256) {
+        return (vaultShare * (IERC20(asset).balanceOf(address(lrtSquared)) + 1)) / (lrtSquared.totalSupply() + 1);
     }
 
-    function _getSharesForEth(
-        uint256 valueInEth
-    ) internal view returns (uint256) {
+    function _getSharesForEth(uint256 valueInEth) internal view returns (uint256) {
         uint256 _totalSupply = lrtSquared.totalSupply();
-        (uint256 _vaultTokenValuesInEth, ) = lrtSquared.fairValueOf(
-            _totalSupply
-        );
+        (uint256 _vaultTokenValuesInEth,) = lrtSquared.fairValueOf(_totalSupply);
 
         return (valueInEth * (_totalSupply + 1)) / (_vaultTokenValuesInEth + 1);
     }

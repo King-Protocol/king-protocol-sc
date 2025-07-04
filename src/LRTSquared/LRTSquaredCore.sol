@@ -18,36 +18,33 @@ contract LRTSquaredCore is LRTSquaredStorage {
     /// @param _tokens addresses of ERC20 tokens to deposit
     /// @param _amounts amounts of tokens to deposit
     /// @param _receiver recipient of the minted share token
-    function deposit(
-        address[] memory _tokens,
-        uint256[] memory _amounts,
-        address _receiver
-    ) external whenNotPaused onlyDepositors updateRateLimit {
+    function deposit(address[] memory _tokens, uint256[] memory _amounts, address _receiver)
+        external
+        whenNotPaused
+        onlyDepositors
+        updateRateLimit
+    {
         if (_tokens.length != _amounts.length) revert ArrayLengthMismatch();
         if (_receiver == address(0)) revert InvalidRecipient();
 
         bool initialDeposit = (totalSupply() == 0);
-        uint256 vaultTokenValueBefore = _getVaultTokenValuesInEth(
-            1 * 10 ** decimals()
-        );
+        uint256 vaultTokenValueBefore = _getVaultTokenValuesInEth(1 * 10 ** decimals());
 
-        (uint256 shareToMint, uint256 depositFee) = previewDeposit(_tokens, _amounts);        
+        (uint256 shareToMint, uint256 depositFee) = previewDeposit(_tokens, _amounts);
         // if initial deposit, set renew timestamp to new timestamp
         if (initialDeposit) rateLimit.renewTimestamp = uint64(block.timestamp + rateLimit.timePeriod);
         // check rate limit
-        if(!rateLimit.limit.consume(uint128(shareToMint + depositFee))) revert RateLimitExceeded();
+        if (!rateLimit.limit.consume(uint128(shareToMint + depositFee))) revert RateLimitExceeded();
         if (shareToMint == 0) revert SharesCannotBeZero();
-        
+
         _deposit(_tokens, _amounts, shareToMint, depositFee, _receiver);
 
         _verifyPositionLimits();
 
-        uint256 vaultTokenValueAfter = _getVaultTokenValuesInEth(
-            1 * 10 ** decimals()
-        );
+        uint256 vaultTokenValueAfter = _getVaultTokenValuesInEth(1 * 10 ** decimals());
 
         if (!initialDeposit && vaultTokenValueBefore > vaultTokenValueAfter) revert VaultTokenValueChanged();
-        
+
         emit Deposit(msg.sender, _receiver, shareToMint, depositFee, _tokens, _amounts);
     }
 
@@ -56,18 +53,23 @@ contract LRTSquaredCore is LRTSquaredStorage {
     function redeem(uint256 vaultShares) external {
         if (vaultShares == 0) revert SharesCannotBeZero();
         if (balanceOf(msg.sender) < vaultShares) revert InsufficientShares();
-        
+
         (address[] memory assets, uint256[] memory assetAmounts, uint256 feeForRedemption) = previewRedeem(vaultShares);
         if (feeForRedemption != 0) _transfer(msg.sender, fee.treasury, feeForRedemption);
         _burn(msg.sender, vaultShares - feeForRedemption);
 
-        for (uint256 i = 0; i < assets.length; i++) 
+        for (uint256 i = 0; i < assets.length; i++) {
             if (assetAmounts[i] > 0) IERC20(assets[i]).safeTransfer(msg.sender, assetAmounts[i]);
+        }
 
         emit Redeem(msg.sender, vaultShares, feeForRedemption, assets, assetAmounts);
     }
 
-    function previewDeposit(address[] memory _tokens, uint256[] memory _amounts) public view returns (uint256, uint256) {
+    function previewDeposit(address[] memory _tokens, uint256[] memory _amounts)
+        public
+        view
+        returns (uint256, uint256)
+    {
         uint256 rewardsValueInEth = getTokenValuesInEth(_tokens, _amounts);
         uint256 shareToMint = _convertToShares(rewardsValueInEth, Math.Rounding.Floor);
         uint256 feeForDeposit = shareToMint.mulDiv(fee.depositFeeInBps, HUNDRED_PERCENT_IN_BPS);
@@ -82,37 +84,27 @@ contract LRTSquaredCore is LRTSquaredStorage {
         return (assets, assetAmounts, feeForRedemption);
     }
 
-    function assetOf(
-        address user,
-        address token
-    ) external view returns (uint256) {
+    function assetOf(address user, address token) external view returns (uint256) {
         return assetForVaultShares(balanceOf(user), token);
     }
 
-    function assetsOf(
-        address user
-    ) external view returns (address[] memory, uint256[] memory) {
+    function assetsOf(address user) external view returns (address[] memory, uint256[] memory) {
         return assetsForVaultShares(balanceOf(user));
     }
 
-    function assetForVaultShares(
-        uint256 vaultShares,
-        address token
-    ) public view returns (uint256) {
+    function assetForVaultShares(uint256 vaultShares, address token) public view returns (uint256) {
         if (!isTokenRegistered(token)) revert TokenNotRegistered();
         if (totalSupply() == 0) revert TotalSupplyZero();
 
         return _convertToAssetAmount(token, vaultShares, Math.Rounding.Floor);
     }
 
-    function assetsForVaultShares(
-        uint256 vaultShare
-    ) public view returns (address[] memory, uint256[] memory) {
+    function assetsForVaultShares(uint256 vaultShare) public view returns (address[] memory, uint256[] memory) {
         if (totalSupply() == 0) revert TotalSupplyZero();
         address[] memory assets = tokens;
         uint256 len = assets.length;
         uint256[] memory assetAmounts = new uint256[](len);
-        for (uint256 i = 0; i < len; ) {
+        for (uint256 i = 0; i < len;) {
             assetAmounts[i] = assetForVaultShares(vaultShare, assets[i]);
 
             unchecked {
@@ -124,16 +116,12 @@ contract LRTSquaredCore is LRTSquaredStorage {
     }
 
     function tvl() external view returns (uint256, uint256) {
-        (
-            address[] memory assets,
-            uint256[] memory assetAmounts
-        ) = totalAssets();
+        (address[] memory assets, uint256[] memory assetAmounts) = totalAssets();
 
         uint256 totalValue = 0;
         for (uint256 i = 0; i < assets.length; i++) {
-            totalValue +=
-                (assetAmounts[i] * IPriceProvider(priceProvider).getPriceInEth(assets[i])) /
-                    10 ** _getDecimals(assets[i]);
+            totalValue += (assetAmounts[i] * IPriceProvider(priceProvider).getPriceInEth(assets[i]))
+                / 10 ** _getDecimals(assets[i]);
         }
 
         (uint256 ethUsdPrice, uint8 ethUsdDecimals) = IPriceProvider(priceProvider).getEthUsdPrice();
@@ -146,15 +134,16 @@ contract LRTSquaredCore is LRTSquaredStorage {
         uint256 valueInEth = _getVaultTokenValuesInEth(vaultTokenShares);
         (uint256 ethUsdPrice, uint8 ethUsdPriceDecimals) = IPriceProvider(priceProvider).getEthUsdPrice();
         if (ethUsdPrice == 0) revert PriceProviderFailed();
-        uint256 valueInUsd = valueInEth * ethUsdPrice / 10 **  ethUsdPriceDecimals;
+        uint256 valueInUsd = valueInEth * ethUsdPrice / 10 ** ethUsdPriceDecimals;
 
         return (valueInEth, valueInUsd);
     }
 
     function communityPause() external payable whenNotPaused {
         if (depositForCommunityPause == 0) revert CommunityPauseDepositNotSet();
-        if (msg.value != depositForCommunityPause)
+        if (msg.value != depositForCommunityPause) {
             revert IncorrectAmountOfEtherSent();
+        }
 
         _pause();
         communityPauseDepositedAmt = msg.value;
@@ -176,7 +165,7 @@ contract LRTSquaredCore is LRTSquaredStorage {
         uint64[] memory positionWeightLimits = new uint64[](len);
         uint256 vaultTotalValue = _getVaultTokenValuesInEth(totalSupply());
 
-        for (uint256 i = 0; i < len; ) {
+        for (uint256 i = 0; i < len;) {
             positionWeightLimits[i] = _getPositionWeight(tokens[i], vaultTotalValue);
             unchecked {
                 ++i;
@@ -192,12 +181,11 @@ contract LRTSquaredCore is LRTSquaredStorage {
         return _getPositionWeight(token, vaultTotalValue);
     }
 
-
     /// @notice Deposit rewards to the contract and mint share tokens to the recipient.
     /// @param _tokens addresses of ERC20 tokens to deposit
     /// @param amounts amounts of tokens to deposit
     /// @param shareToMint amount of share token (= LRT^2 token) to mint
-    /// @param depositFee fee to mint to the treasury 
+    /// @param depositFee fee to mint to the treasury
     /// @param recipientForMintedShare recipient of the minted share token
     function _deposit(
         address[] memory _tokens,
@@ -206,8 +194,8 @@ contract LRTSquaredCore is LRTSquaredStorage {
         uint256 depositFee,
         address recipientForMintedShare
     ) internal {
-        for (uint256 i = 0; i < _tokens.length; ) {
-            if (!isTokenWhitelisted(_tokens[i])) revert TokenNotWhitelisted(); 
+        for (uint256 i = 0; i < _tokens.length;) {
+            if (!isTokenWhitelisted(_tokens[i])) revert TokenNotWhitelisted();
             IERC20(_tokens[i]).safeTransferFrom(msg.sender, address(this), amounts[i]);
 
             unchecked {
@@ -219,21 +207,19 @@ contract LRTSquaredCore is LRTSquaredStorage {
         _mint(recipientForMintedShare, shareToMint);
     }
 
-    function _convertToShares(
-        uint256 valueInEth,
-        Math.Rounding rounding
-    ) public view virtual returns (uint256) {
+    function _convertToShares(uint256 valueInEth, Math.Rounding rounding) public view virtual returns (uint256) {
         uint256 _totalSupply = totalSupply();
         if (_totalSupply == 0) return valueInEth;
 
         return valueInEth.mulDiv(_totalSupply, _getVaultTokenValuesInEth(_totalSupply), rounding);
     }
 
-    function _convertToAssetAmount(
-        address assetToken,
-        uint256 vaultShares,
-        Math.Rounding rounding
-    ) internal view virtual returns (uint256) {
+    function _convertToAssetAmount(address assetToken, uint256 vaultShares, Math.Rounding rounding)
+        internal
+        view
+        virtual
+        returns (uint256)
+    {
         uint256 bal = IERC20(assetToken).balanceOf(address(this));
         uint256 _totalSupply = totalSupply();
 
@@ -252,15 +238,15 @@ contract LRTSquaredCore is LRTSquaredStorage {
         if (!depositor[msg.sender]) revert OnlyDepositors();
     }
 
-    modifier updateRateLimit {
+    modifier updateRateLimit() {
         _updateRateLimit();
         _;
     }
 
     function _updateRateLimit() internal {
         uint256 _totalSupply = totalSupply();
-        if(_totalSupply == 0) return;
-        
+        if (_totalSupply == 0) return;
+
         // If total supply = 0, can't mint anything since new rate limit which is a percentage of total supply would be 0
         if (block.timestamp > rateLimit.renewTimestamp) {
             uint128 capactity = uint128(_totalSupply.mulDiv(rateLimit.percentageLimit, HUNDRED_PERCENT_LIMIT));
@@ -285,26 +271,15 @@ contract LRTSquaredCore is LRTSquaredStorage {
 
             // Call the implementation.
             // out and outsize are 0 because we don't know the size yet.
-            let result := delegatecall(
-                gas(),
-                sload(slot),
-                0,
-                calldatasize(),
-                0,
-                0
-            )
+            let result := delegatecall(gas(), sload(slot), 0, calldatasize(), 0, 0)
 
             // Copy the returned data.
             returndatacopy(0, 0, returndatasize())
 
             switch result
             // delegatecall returns 0 on error.
-            case 0 {
-                revert(0, returndatasize())
-            }
-            default {
-                return(0, returndatasize())
-            }
+            case 0 { revert(0, returndatasize()) }
+            default { return(0, returndatasize()) }
         }
     }
-} 
+}
