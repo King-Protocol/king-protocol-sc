@@ -33,7 +33,14 @@ interface ILRTSquared is IERC20 {
     event TokenWhitelisted(address token, bool whitelisted);
     event PriceProviderSet(address oldPriceProvider, address newPriceProvider);
     event DepositorsSet(address[] accounts, bool[] isDepositor);
-    event Deposit(address indexed sender, address indexed recipient, uint256 sharesMinted, uint256 fee, address[] tokens, uint256[] amounts);
+    event Deposit(
+        address indexed sender,
+        address indexed recipient,
+        uint256 sharesMinted,
+        uint256 fee,
+        address[] tokens,
+        uint256[] amounts
+    );
     event Redeem(address indexed account, uint256 sharesRedeemed, uint256 fee, address[] tokens, uint256[] amounts);
     event CommunityPauseDepositSet(uint256 oldAmount, uint256 newAmount);
     event CommunityPause(address indexed pauser);
@@ -47,7 +54,7 @@ interface ILRTSquared is IERC20 {
     event MaxSlippageForRebalanceSet(uint256 oldMaxSlippage, uint256 newMaxSlippage);
     event WhitelistRebalanceOutputToken(address token, bool whitelisted);
     event SwapperSet(address oldSwapper, address newSwapper);
-    event Rebalance(address fromAsset, address toAsset, uint256 fromAssetAmount,uint256 toAssetAmount);
+    event Rebalance(address fromAsset, address toAsset, uint256 fromAssetAmount, uint256 toAssetAmount);
     event FeeSet(Fee oldFee, Fee newFee);
     event TreasurySet(address oldTreasury, address newTreasury);
     event StrategyConfigSet(address indexed token, address indexed strategyAdapter, uint96 maxSlippageInBps);
@@ -108,7 +115,13 @@ interface ILRTSquared is IERC20 {
     function setFee(Fee memory _fee) external;
     function setTreasuryAddress(address treasury) external;
     function setSwapper(address _swapper) external;
-    function rebalance(address _fromAsset, address _toAsset, uint256 _fromAssetAmount, uint256 _minToAssetAmount, bytes calldata _data) external;
+    function rebalance(
+        address _fromAsset,
+        address _toAsset,
+        uint256 _fromAssetAmount,
+        uint256 _minToAssetAmount,
+        bytes calldata _data
+    ) external;
     function registerToken(address _token, uint64 _positionWeightLimit) external;
     function setRebalancer(address account) external;
     function setPauser(address account, bool isPauser) external;
@@ -125,7 +138,10 @@ interface ILRTSquared is IERC20 {
     function depositToStrategy(address token, uint256 amount) external;
     function deposit(address[] memory _tokens, uint256[] memory _amounts, address _receiver) external;
     function redeem(uint256 vaultShares) external;
-    function previewDeposit(address[] memory _tokens, uint256[] memory _amounts) external view returns (uint256, uint256);
+    function previewDeposit(address[] memory _tokens, uint256[] memory _amounts)
+        external
+        view
+        returns (uint256, uint256);
     function previewRedeem(uint256 vaultShares) external view returns (address[] memory, uint256[] memory, uint256);
     function assetOf(address user, address token) external view returns (uint256);
     function assetsOf(address user) external view returns (address[] memory, uint256[] memory);

@@ -10,17 +10,15 @@ contract DeployEEigenStrategy is Utils {
 
     function run() public {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        
+
         string memory deployments = readDeploymentFile();
-        address priceProvider = stdJson.readAddress(
-            deployments,
-            string.concat(".", "addresses", ".", "priceProviderProxy")
-        );
+        address priceProvider =
+            stdJson.readAddress(deployments, string.concat(".", "addresses", ".", "priceProviderProxy"));
 
         vm.startBroadcast(deployerPrivateKey);
 
         strategy = new EEigenStrategy(priceProvider);
 
         vm.stopBroadcast();
-    }    
+    }
 }

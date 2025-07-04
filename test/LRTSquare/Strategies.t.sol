@@ -52,8 +52,8 @@ contract LRTSquaredStrategiesTest is Test {
         priceDecimals[0] = 18;
         priceDecimals[1] = 18;
 
-        boringVaultPriceProvider = new BoringVaultPriceProvider(owner, address(priceProvider), vaultTokens, underlyingTokens, priceDecimals);
-
+        boringVaultPriceProvider =
+            new BoringVaultPriceProvider(owner, address(priceProvider), vaultTokens, underlyingTokens, priceDecimals);
 
         address[] memory tokens = new address[](2);
         tokens[0] = eEigen;
@@ -80,7 +80,7 @@ contract LRTSquaredStrategiesTest is Test {
         });
 
         priceProvider.setTokenConfig(tokens, priceProviderConfig);
-        
+
         // Only register tokens if they are not already registered
         if (!lrtSquared.isTokenRegistered(tokens[0])) {
             lrtSquared.registerToken(tokens[0], HUNDRED_PERCENT_LIMIT);
@@ -100,15 +100,11 @@ contract LRTSquaredStrategiesTest is Test {
         eEigenStrategy = new EEigenStrategy(address(priceProvider));
         sEthFiStrategy = new SEthFiStrategy(address(priceProvider));
 
-        ILRTSquared.StrategyConfig memory eEigenStrategyConfig = ILRTSquared.StrategyConfig({
-            strategyAdapter: address(eEigenStrategy),
-            maxSlippageInBps: 50
-        });
+        ILRTSquared.StrategyConfig memory eEigenStrategyConfig =
+            ILRTSquared.StrategyConfig({strategyAdapter: address(eEigenStrategy), maxSlippageInBps: 50});
 
-        ILRTSquared.StrategyConfig memory sEthFiStrategyConfig = ILRTSquared.StrategyConfig({
-            strategyAdapter: address(sEthFiStrategy),
-            maxSlippageInBps: 50
-        });
+        ILRTSquared.StrategyConfig memory sEthFiStrategyConfig =
+            ILRTSquared.StrategyConfig({strategyAdapter: address(sEthFiStrategy), maxSlippageInBps: 50});
 
         lrtSquared.setTokenStrategyConfig(eigen, eEigenStrategyConfig);
         lrtSquared.setTokenStrategyConfig(ethFi, sEthFiStrategyConfig);
@@ -124,11 +120,11 @@ contract LRTSquaredStrategiesTest is Test {
     function test_AddEigenToStrategy() external {
         uint256 eigenBalBefore = IERC20(eigen).balanceOf(address(lrtSquared));
         uint256 eEigenBalBefore = IERC20(eEigen).balanceOf(address(lrtSquared));
-        
+
         uint256 amount = 10 ether;
         vm.prank(owner);
         lrtSquared.depositToStrategy(eigen, amount);
-        
+
         uint256 eigenBalAfter = IERC20(eigen).balanceOf(address(lrtSquared));
         uint256 eEigenBalAfter = IERC20(eEigen).balanceOf(address(lrtSquared));
 
@@ -139,11 +135,11 @@ contract LRTSquaredStrategiesTest is Test {
     function test_AddEthFiToStrategy() external {
         uint256 ethFiBalBefore = IERC20(ethFi).balanceOf(address(lrtSquared));
         uint256 sEthFiBalBefore = IERC20(sEthFi).balanceOf(address(lrtSquared));
-        
+
         uint256 amount = 10 ether;
         vm.prank(owner);
         lrtSquared.depositToStrategy(ethFi, amount);
-        
+
         uint256 ethFiBalAfter = IERC20(ethFi).balanceOf(address(lrtSquared));
         uint256 sEthFiBalAfter = IERC20(sEthFi).balanceOf(address(lrtSquared));
 
@@ -168,7 +164,7 @@ contract LRTSquaredStrategiesTest is Test {
         vm.expectRevert(ILRTSquared.InvalidValue.selector);
         lrtSquared.setTokenStrategyConfig(address(0), strategyConfig);
     }
-    
+
     function test_CannotAddStrategyForAnUnregisteredToken() public {
         ILRTSquared.StrategyConfig memory strategyConfig;
 
@@ -179,10 +175,8 @@ contract LRTSquaredStrategiesTest is Test {
 
     function test_CannotAddStrategyForWhichReturnTokenIsZeroAddress() public {
         BadStrategyWithReturnTokenZero badStrategy = new BadStrategyWithReturnTokenZero(address(priceProvider));
-        ILRTSquared.StrategyConfig memory strategyConfig = ILRTSquared.StrategyConfig({
-            strategyAdapter: address(badStrategy),
-            maxSlippageInBps: 50
-        }); 
+        ILRTSquared.StrategyConfig memory strategyConfig =
+            ILRTSquared.StrategyConfig({strategyAdapter: address(badStrategy), maxSlippageInBps: 50});
 
         vm.prank(owner);
         vm.expectRevert(ILRTSquared.StrategyReturnTokenCannotBeAddressZero.selector);
@@ -190,11 +184,10 @@ contract LRTSquaredStrategiesTest is Test {
     }
 
     function test_CannotAddStrategyForWhichReturnTokenIsNotRegistered() public {
-        BadStrategyWithReturnTokenUnregistered badStrategy = new BadStrategyWithReturnTokenUnregistered(address(priceProvider));
-        ILRTSquared.StrategyConfig memory strategyConfig = ILRTSquared.StrategyConfig({
-            strategyAdapter: address(badStrategy),
-            maxSlippageInBps: 50
-        }); 
+        BadStrategyWithReturnTokenUnregistered badStrategy =
+            new BadStrategyWithReturnTokenUnregistered(address(priceProvider));
+        ILRTSquared.StrategyConfig memory strategyConfig =
+            ILRTSquared.StrategyConfig({strategyAdapter: address(badStrategy), maxSlippageInBps: 50});
 
         vm.prank(owner);
         vm.expectRevert(ILRTSquared.StrategyReturnTokenNotRegistered.selector);
@@ -202,10 +195,8 @@ contract LRTSquaredStrategiesTest is Test {
     }
 
     function test_CannotAddStrategyWhereStrategyAdapterIsAddressZero() public {
-        ILRTSquared.StrategyConfig memory strategyConfig = ILRTSquared.StrategyConfig({
-            strategyAdapter: address(0),
-            maxSlippageInBps: 50
-        }); 
+        ILRTSquared.StrategyConfig memory strategyConfig =
+            ILRTSquared.StrategyConfig({strategyAdapter: address(0), maxSlippageInBps: 50});
 
         vm.prank(owner);
         vm.expectRevert(ILRTSquared.StrategyAdapterCannotBeAddressZero.selector);
@@ -213,10 +204,8 @@ contract LRTSquaredStrategiesTest is Test {
     }
 
     function test_CannotAddStrategyWhereMaxSlippageIsGreaterThanLimit() public {
-        ILRTSquared.StrategyConfig memory strategyConfig = ILRTSquared.StrategyConfig({
-            strategyAdapter: address(eEigenStrategy),
-            maxSlippageInBps: 1000
-        }); 
+        ILRTSquared.StrategyConfig memory strategyConfig =
+            ILRTSquared.StrategyConfig({strategyAdapter: address(eEigenStrategy), maxSlippageInBps: 1000});
 
         vm.prank(owner);
         vm.expectRevert(ILRTSquared.SlippageCannotBeGreaterThanMaxLimit.selector);
@@ -224,10 +213,8 @@ contract LRTSquaredStrategiesTest is Test {
     }
 
     function test_OnlyGovernorCanAddStrategy() public {
-        ILRTSquared.StrategyConfig memory strategyConfig = ILRTSquared.StrategyConfig({
-            strategyAdapter: address(eEigenStrategy),
-            maxSlippageInBps: 50
-        }); 
+        ILRTSquared.StrategyConfig memory strategyConfig =
+            ILRTSquared.StrategyConfig({strategyAdapter: address(eEigenStrategy), maxSlippageInBps: 50});
 
         vm.prank(address(1));
         vm.expectRevert(Governable.OnlyGovernor.selector);
