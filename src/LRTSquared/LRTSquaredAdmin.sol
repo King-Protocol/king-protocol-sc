@@ -11,6 +11,7 @@ import {
     ISwapper
 } from "./LRTSquaredStorage.sol";
 import {BaseStrategy} from "../strategies/BaseStrategy.sol";
+import {BoringVaultStrategyBase} from "../strategies/BoringVaultStrategyBase.sol";
 
 contract LRTSquaredAdmin is LRTSquaredStorage {
     using BucketLimiter for BucketLimiter.Limit;
@@ -79,7 +80,12 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
         emit Rebalance(_fromAsset, _toAsset, _fromAssetAmount, outAmount);
     }
 
+    // Backward compatible version - defaults to Native type
     function registerToken(address _token, uint64 _positionWeightLimit) external onlyGovernor {
+        registerToken(_token, _positionWeightLimit, TokenType.Native);
+    }
+
+    function registerToken(address _token, uint64 _positionWeightLimit, TokenType _tokenType) public onlyGovernor {
         if (_token == address(0)) revert InvalidValue();
         if (isTokenRegistered(_token)) revert TokenAlreadyRegistered();
         if (IPriceProvider(priceProvider).getPriceInEth(_token) == 0) {
@@ -87,12 +93,107 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
         }
         if (_positionWeightLimit > HUNDRED_PERCENT_LIMIT) revert WeightLimitCannotBeGreaterThanHundred();
 
-        _tokenInfos[_token] =
-            TokenInfo({registered: true, whitelisted: true, positionWeightLimit: _positionWeightLimit});
+        // Validate token type for staked tokens
+        if (_tokenType == TokenType.Staked) {
+            if (_findStrategyForStakedToken(_token) == address(0)) {
+                revert StrategyReturnTokenNotRegistered();
+            }
+        }
+
+        _tokenInfos[_token] = TokenInfo({
+            registered: true,
+            whitelisted: true,
+            positionWeightLimit: _positionWeightLimit,
+            tokenType: _tokenType
+        });
         tokens.push(_token);
 
         emit TokenRegistered(_token);
         emit TokenWhitelisted(_token, true);
+        emit TokenTypeSet(_token, _tokenType);
+    }
+
+    function setTokenType(address _token, TokenType _tokenType) external onlyGovernor {
+        if (!isTokenRegistered(_token)) revert TokenNotRegistered();
+
+        // Validate token type for staked tokens
+        if (_tokenType == TokenType.Staked) {
+            // Check if any registered token has a strategy that returns this token
+            bool foundStrategy = false;
+            for (uint256 i = 0; i < tokens.length;) {
+                address token = tokens[i];
+                StrategyConfig memory config = tokenStrategyConfig[token];
+
+                if (config.strategyAdapter != address(0)) {
+                    // Get the return token from the strategy
+                    try BaseStrategy(config.strategyAdapter).returnToken() returns (address returnToken) {
+                        if (returnToken == _token) {
+                            foundStrategy = true;
+                            break;
+                        }
+                    } catch {
+                        // Strategy might not be deployed yet, continue searching
+                    }
+                }
+
+                unchecked {
+                    ++i;
+                }
+            }
+
+            if (!foundStrategy) {
+                revert StrategyReturnTokenNotRegistered();
+            }
+        }
+
+        _tokenInfos[_token].tokenType = _tokenType;
+        emit TokenTypeSet(_token, _tokenType);
+    }
+
+    function migrateTokenTypes(address[] calldata _tokens, TokenType[] calldata _types) external onlyGovernor {
+        if (_tokens.length != _types.length) revert ArrayLengthMismatch();
+
+        for (uint256 i = 0; i < _tokens.length;) {
+            if (!isTokenRegistered(_tokens[i])) revert TokenNotRegistered();
+
+            // Validate staked token has associated strategy
+            if (_types[i] == TokenType.Staked) {
+                bool foundStrategy = false;
+                for (uint256 j = 0; j < tokens.length;) {
+                    address token = tokens[j];
+                    StrategyConfig memory config = tokenStrategyConfig[token];
+
+                    if (config.strategyAdapter != address(0)) {
+                        // Get the return token from the strategy
+                        try BaseStrategy(config.strategyAdapter).returnToken() returns (address returnToken) {
+                            if (returnToken == _tokens[i]) {
+                                foundStrategy = true;
+                                break;
+                            }
+                        } catch {
+                            // Strategy might not be deployed yet, continue searching
+                        }
+                    }
+
+                    unchecked {
+                        ++j;
+                    }
+                }
+
+                if (!foundStrategy) {
+                    revert StrategyReturnTokenNotRegistered();
+                }
+            }
+
+            _tokenInfos[_tokens[i]].tokenType = _types[i];
+            emit TokenTypeSet(_tokens[i], _types[i]);
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        emit TokenTypesMigrated(_tokens, _types);
     }
 
     function setRebalancer(address account) external onlyGovernor {
@@ -213,7 +314,6 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
 
         address returnToken = BaseStrategy(strategyConfig.strategyAdapter).returnToken();
         if (returnToken == address(0)) revert StrategyReturnTokenCannotBeAddressZero();
-        if (!isTokenRegistered(returnToken)) revert StrategyReturnTokenNotRegistered();
         if (IPriceProvider(priceProvider).getPriceInEth(returnToken) == 0) {
             revert PriceProviderNotConfiguredForStrategyReturnToken();
         }
@@ -235,6 +335,22 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
         );
 
         _verifyPositionLimits();
+    }
+
+    function withdrawFromStrategy(address token, uint256 shareAmount) external onlyGovernor {
+        if (shareAmount == 0) revert AmountCannotBeZero();
+        if (tokenStrategyConfig[token].strategyAdapter == address(0)) revert TokenStrategyConfigNotSet();
+
+        delegateCall(
+            tokenStrategyConfig[token].strategyAdapter,
+            abi.encodeWithSelector(BaseStrategy.initiateWithdrawal.selector, shareAmount)
+        );
+    }
+
+    function cancelWithdrawalFromStrategy(address token) external onlyGovernor {
+        if (tokenStrategyConfig[token].strategyAdapter == address(0)) revert TokenStrategyConfigNotSet();
+
+        delegateCall(tokenStrategyConfig[token].strategyAdapter, abi.encodeWithSignature("cancelWithdrawal()"));
     }
 
     function delegateCall(address target, bytes memory data) internal returns (bytes memory result) {

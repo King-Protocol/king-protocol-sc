@@ -9,6 +9,7 @@ import {ERC20PermitUpgradeable} from
 import {UUPSUpgradeable, Initializable} from "@openzeppelin-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {IPriceProvider} from "src/interfaces/IPriceProvider.sol";
 import {Governable} from "../governance/Governable.sol";
+import {BaseStrategy} from "../strategies/BaseStrategy.sol";
 import {PausableUpgradeable} from "@openzeppelin-upgradeable/contracts/utils/PausableUpgradeable.sol";
 import {BucketLimiter} from "../libraries/BucketLimiter.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -37,10 +38,17 @@ contract LRTSquaredStorage is
     using SafeERC20 for IERC20;
     using Math for uint256;
 
+    enum TokenType {
+        Native, // Liquid, unstaked assets (e.g., ETHFI, EIGEN)
+        Staked // Yield-bearing variants (e.g., sETHFI, eEIGEN)
+
+    }
+
     struct TokenInfo {
         bool registered;
         bool whitelisted;
         uint64 positionWeightLimit;
+        TokenType tokenType; // Added at end for storage compatibility
     }
 
     struct RateLimit {
@@ -125,6 +133,8 @@ contract LRTSquaredStorage is
     event FeeSet(Fee oldFee, Fee newFee);
     event TreasurySet(address oldTreasury, address newTreasury);
     event StrategyConfigSet(address indexed token, address indexed strategyAdapter, uint96 maxSlippageInBps);
+    event TokenTypeSet(address indexed token, TokenType tokenType);
+    event TokenTypesMigrated(address[] tokens, TokenType[] types);
 
     error TokenAlreadyRegistered();
     error TokenNotWhitelisted();
@@ -160,6 +170,7 @@ contract LRTSquaredStorage is
     error StrategyReturnTokenNotRegistered();
     error PriceProviderNotConfiguredForStrategyReturnToken();
     error SharesCannotBeZero();
+    error InsufficientLiquidity();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -218,18 +229,28 @@ contract LRTSquaredStorage is
         return (assets, assetAmounts);
     }
 
+    function getTokenPriceInEth(address token) public view returns (uint256) {
+        uint256 price = IPriceProvider(priceProvider).getPriceInEth(token);
+        if (price == 0) revert PriceProviderFailed();
+        return price;
+    }
+
+    function getTokenValueInEth(address token, uint256 amount) public view returns (uint256) {
+        if (!isTokenRegistered(token)) revert TokenNotRegistered();
+        if (amount == 0) return 0;
+
+        uint256 price = getTokenPriceInEth(token);
+        return (amount * price) / 10 ** _getDecimals(token);
+    }
+
     function getTokenValuesInEth(address[] memory _tokens, uint256[] memory _amounts) public view returns (uint256) {
         uint256 total_eth = 0;
         uint256 len = _tokens.length;
 
         if (len != _amounts.length) revert ArrayLengthMismatch();
 
-        for (uint256 i = 0; i < _tokens.length;) {
-            if (!isTokenRegistered(_tokens[i])) revert TokenNotRegistered();
-
-            uint256 price = IPriceProvider(priceProvider).getPriceInEth(_tokens[i]);
-            if (price == 0) revert PriceProviderFailed();
-            total_eth += (_amounts[i] * price) / 10 ** _getDecimals(_tokens[i]);
+        for (uint256 i = 0; i < len;) {
+            total_eth += getTokenValueInEth(_tokens[i], _amounts[i]);
 
             unchecked {
                 ++i;
@@ -239,11 +260,8 @@ contract LRTSquaredStorage is
     }
 
     function getTokenTotalValuesInEth(address token) public view returns (uint256) {
-        uint256 price = IPriceProvider(priceProvider).getPriceInEth(token);
-        if (price == 0) revert PriceProviderFailed();
-
-        return (IERC20(token).balanceOf(address(this)) * IPriceProvider(priceProvider).getPriceInEth(token))
-            / 10 ** _getDecimals(token);
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        return getTokenValueInEth(token, balance);
     }
 
     function _getDecimals(address erc20) internal view returns (uint8) {
@@ -288,4 +306,34 @@ contract LRTSquaredStorage is
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyGovernor {}
+
+    /**
+     * @notice Find strategy that returns the specified staked token
+     * @param stakedToken The staked token to find strategy for
+     * @return strategy Address of strategy that returns this token, or address(0) if none found
+     */
+    function _findStrategyForStakedToken(address stakedToken) internal view returns (address strategy) {
+        // Iterate through all registered tokens to find which has a strategy that produces stakedToken
+        for (uint256 i = 0; i < tokens.length;) {
+            address token = tokens[i];
+            StrategyConfig memory config = tokenStrategyConfig[token];
+
+            if (config.strategyAdapter != address(0)) {
+                // Try to get the staked token that this strategy produces
+                try BaseStrategy(config.strategyAdapter).returnToken() returns (address producedStakedToken) {
+                    if (producedStakedToken == stakedToken) {
+                        return config.strategyAdapter;
+                    }
+                } catch {
+                    // Strategy call failed, continue searching
+                }
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        return address(0);
+    }
 }

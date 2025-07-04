@@ -5,10 +5,17 @@ import {BucketLimiter} from "../libraries/BucketLimiter.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface ILRTSquared is IERC20 {
+    enum TokenType {
+        Native, // Liquid, unstaked assets (e.g., ETHFI, EIGEN)
+        Staked // Yield-bearing variants (e.g., sETHFI, eEIGEN)
+
+    }
+
     struct TokenInfo {
         bool registered;
         bool whitelisted;
         uint64 positionWeightLimit;
+        TokenType tokenType;
     }
 
     struct RateLimit {
@@ -58,6 +65,8 @@ interface ILRTSquared is IERC20 {
     event FeeSet(Fee oldFee, Fee newFee);
     event TreasurySet(address oldTreasury, address newTreasury);
     event StrategyConfigSet(address indexed token, address indexed strategyAdapter, uint96 maxSlippageInBps);
+    event TokenTypeSet(address indexed token, TokenType tokenType);
+    event TokenTypesMigrated(address[] tokens, TokenType[] types);
 
     error TokenAlreadyRegistered();
     error TokenNotWhitelisted();
@@ -92,6 +101,8 @@ interface ILRTSquared is IERC20 {
     error StrategyReturnTokenCannotBeAddressZero();
     error StrategyReturnTokenNotRegistered();
     error PriceProviderNotConfiguredForStrategyReturnToken();
+    error SharesCannotBeZero();
+    error InsufficientLiquidity();
 
     function HUNDRED_PERCENT_LIMIT() external pure returns (uint64);
     function HUNDRED_PERCENT_IN_BPS() external pure returns (uint64);
@@ -123,6 +134,9 @@ interface ILRTSquared is IERC20 {
         bytes calldata _data
     ) external;
     function registerToken(address _token, uint64 _positionWeightLimit) external;
+    function registerToken(address _token, uint64 _positionWeightLimit, TokenType _tokenType) external;
+    function setTokenType(address _token, TokenType _tokenType) external;
+    function migrateTokenTypes(address[] calldata _tokens, TokenType[] calldata _types) external;
     function setRebalancer(address account) external;
     function setPauser(address account, bool isPauser) external;
     function setMaxSlippageForRebalancing(uint256 maxSlippage) external;
@@ -136,6 +150,8 @@ interface ILRTSquared is IERC20 {
     function setPercentageRateLimit(uint128 __percentageLimit) external;
     function setTokenStrategyConfig(address token, StrategyConfig memory strategyConfig) external;
     function depositToStrategy(address token, uint256 amount) external;
+    function withdrawFromStrategy(address token, uint256 shareAmount) external;
+    function cancelWithdrawalFromStrategy(address token) external;
     function deposit(address[] memory _tokens, uint256[] memory _amounts, address _receiver) external;
     function redeem(uint256 vaultShares) external;
     function previewDeposit(address[] memory _tokens, uint256[] memory _amounts)
