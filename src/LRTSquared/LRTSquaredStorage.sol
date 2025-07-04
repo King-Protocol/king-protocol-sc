@@ -171,8 +171,8 @@ contract LRTSquaredStorage is
     error PriceProviderNotConfiguredForStrategyReturnToken();
     error SharesCannotBeZero();
     error InsufficientLiquidity();
-    /// @custom:oz-upgrades-unsafe-allow constructor
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
