@@ -24,7 +24,11 @@ interface ILRTSquared is IERC20 {
         uint48 redeemFeeInBps;
     }
 
-    struct StrategyConfig {
+    /**
+     * @notice DEPRECATED: Legacy strategy configuration
+     * @dev Maintained for compatibility - DO NOT USE
+     */
+    struct StrategyConfig_DEPRECATED {
         address strategyAdapter;
         uint96 maxSlippageInBps;
     }
@@ -57,7 +61,11 @@ interface ILRTSquared is IERC20 {
     event Rebalance(address fromAsset, address toAsset, uint256 fromAssetAmount, uint256 toAssetAmount);
     event FeeSet(Fee oldFee, Fee newFee);
     event TreasurySet(address oldTreasury, address newTreasury);
-    event StrategyConfigSet(address indexed token, address indexed strategyAdapter, uint96 maxSlippageInBps);
+    /**
+     * @notice DEPRECATED: Legacy strategy event
+     * @dev No longer emitted - maintained for compatibility only
+     */
+    event StrategyConfigSet_DEPRECATED(address indexed token, address indexed strategyAdapter, uint96 maxSlippageInBps);
 
     error TokenAlreadyRegistered();
     error TokenNotWhitelisted();
@@ -85,16 +93,24 @@ interface ILRTSquared is IERC20 {
     error InsufficientTokensReceivedFromSwapper();
     error ApplicableSlippageGreaterThanMaxLimit();
     error AlreadyInSameState();
-    error StrategyAdapterCannotBeAddressZero();
-    error SlippageCannotBeGreaterThanMaxLimit();
+    /**
+     * @notice DEPRECATED: Legacy strategy errors
+     * @dev No longer used - maintained for compatibility only
+     */
+    error StrategyAdapterCannotBeAddressZero_DEPRECATED();
+    error SlippageCannotBeGreaterThanMaxLimit_DEPRECATED();
+    error TokenStrategyConfigNotSet_DEPRECATED();
+    error StrategyReturnTokenCannotBeAddressZero_DEPRECATED();
+    error StrategyReturnTokenNotRegistered_DEPRECATED();
+    error PriceProviderNotConfiguredForStrategyReturnToken_DEPRECATED();
     error AmountCannotBeZero();
-    error TokenStrategyConfigNotSet();
-    error StrategyReturnTokenCannotBeAddressZero();
-    error StrategyReturnTokenNotRegistered();
-    error PriceProviderNotConfiguredForStrategyReturnToken();
 
     function HUNDRED_PERCENT_LIMIT() external pure returns (uint64);
     function HUNDRED_PERCENT_IN_BPS() external pure returns (uint64);
+    /**
+     * @notice DEPRECATED: Legacy constant
+     * @dev Use MAX_SLIPPAGE_FOR_STRATEGY_IN_BPS_DEPRECATED instead
+     */
     function MAX_SLIPPAGE_FOR_STRATEGY_IN_BPS() external pure returns (uint256);
     function tokenInfos(address token) external view returns (TokenInfo memory);
     function depositor(address account) external view returns (bool);
@@ -109,7 +125,11 @@ interface ILRTSquared is IERC20 {
     function depositForCommunityPause() external view returns (uint256);
     function communityPauseDepositedAmt() external view returns (uint256);
     function fee() external view returns (Fee memory);
-    function tokenStrategyConfig(address token) external view returns (StrategyConfig memory);
+    /**
+     * @notice DEPRECATED: Legacy function
+     * @dev Use new vault system instead
+     */
+    function tokenStrategyConfig(address token) external view returns (StrategyConfig_DEPRECATED memory);
     function getRateLimit() external view returns (RateLimit memory);
     function whitelistRebalacingOutputToken(address _token, bool _shouldWhitelist) external;
     function setFee(Fee memory _fee) external;
@@ -134,7 +154,15 @@ interface ILRTSquared is IERC20 {
     function setRateLimitTimePeriod(uint64 __timePeriod) external;
     function setRefillRatePerSecond(uint64 __refillRate) external;
     function setPercentageRateLimit(uint128 __percentageLimit) external;
-    function setTokenStrategyConfig(address token, StrategyConfig memory strategyConfig) external;
+    /**
+     * @notice DEPRECATED: Legacy strategy function
+     * @dev Use new vault system instead
+     */
+    function setTokenStrategyConfig(address token, StrategyConfig_DEPRECATED memory strategyConfig) external;
+    /**
+     * @notice DEPRECATED: Legacy strategy function
+     * @dev Use new vault system instead
+     */
     function depositToStrategy(address token, uint256 amount) external;
     function deposit(address[] memory _tokens, uint256[] memory _amounts, address _receiver) external;
     function redeem(uint256 vaultShares) external;
@@ -164,4 +192,58 @@ interface ILRTSquared is IERC20 {
     function paused() external view returns (bool);
     function governor() external view returns (address);
     function transferGovernance(address _newGovernor) external;
+
+    // ============================================
+    // VAULT SYSTEM FUNCTIONS
+    // ============================================
+
+    function vaults(uint256 index) external view returns (address);
+    function vaultPrincipal(address vault, address token) external view returns (uint256);
+    function isVaultRegistered(address vault) external view returns (bool);
+    function isVaultEnabled(address vault) external view returns (bool);
+    function isAssetAcceptedByVault(address vault, address asset) external view returns (bool);
+    function allVaults() external view returns (address[] memory);
+    function vaultInfo(address vault) external view returns (bool registered, bool enabled);
+    function registerVault(address _vault) external;
+    function enableVault(address _vault) external;
+    function disableVault(address _vault) external;
+    function depositToVault(address _vault, address _asset, uint256 _amount) external returns (uint256 shares);
+    function withdrawFromVault(address _vault, address _asset, uint256 _amount) external returns (uint256 actualAmount);
+    function pauseVault(address _vault) external;
+    function unpauseVault(address _vault) external;
+    function pauseAllVaults() external;
+    function emergencyWithdrawal(address _vault) external;
+    function getVaultBalances() external view returns (address[] memory tokens_, uint256[] memory quantities);
+    function getAssetBreakdown()
+        external
+        view
+        returns (
+            address[] memory tokens_,
+            uint256[] memory mainBalances,
+            uint256[] memory vaultBalances,
+            uint256[] memory totalBalances
+        );
+
+    // Vault events
+    event VaultRegistered(address indexed vault, address[] acceptedAssets, bool enabled);
+    event VaultEnabled(address indexed vault);
+    event VaultDisabled(address indexed vault);
+    event DepositedToVault(address indexed vault, address indexed asset, uint256 amount, uint256 shares);
+    event WithdrawnFromVault(address indexed vault, address indexed asset, uint256 amount, uint256 actualAmount);
+    event VaultPaused(address indexed vault);
+    event VaultUnpaused(address indexed vault);
+    event AllVaultsPaused(uint256 successCount);
+    event EmergencyWithdrawal(address indexed vault, address[] tokens, uint256[] amounts);
+
+    // Vault errors
+    error NotKingVault();
+    error VaultDoesNotSupportERC165();
+    error VaultCannotBeZeroAddress();
+    error VaultAlreadyRegistered();
+    error VaultNotRegistered();
+    error VaultHasPrincipal(address vault, address token, uint256 amount);
+    error VaultNotEnabled();
+    error AssetNotAcceptedByVault(address vault, address asset);
+    error InsufficientTokenBalance();
+    error InsufficientPrincipal(address vault, address asset, uint256 principal, uint256 requested);
 }

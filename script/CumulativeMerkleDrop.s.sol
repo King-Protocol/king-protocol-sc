@@ -17,17 +17,15 @@ contract DeployCumulativeMerkleDrop is Utils {
         ChainConfig memory config = getChainConfig(vm.toString(block.chainid));
 
         address cumulativeMerkleDropImpl = address(new CumulativeMerkleDrop(lrt2));
-        CumulativeMerkleDrop cumulativeMerkleDrop = CumulativeMerkleDrop(address(
-            new UUPSProxy(
-                cumulativeMerkleDropImpl,
-                abi.encodeWithSelector(
-                    CumulativeMerkleDrop.initialize.selector,
-                    accessControlDelay,
-                    config.cumulativeDropOwner, 
-                    config.cumulativeDropPauser
-                )
+        new UUPSProxy(
+            cumulativeMerkleDropImpl,
+            abi.encodeWithSelector(
+                CumulativeMerkleDrop.initialize.selector,
+                accessControlDelay,
+                config.cumulativeDropOwner,
+                config.cumulativeDropPauser
             )
-        ));
+        );
 
         vm.stopBroadcast();
     }

@@ -90,14 +90,14 @@ contract ForkAddToStrategies is Test, GnosisHelpers {
             gnosisTx = string(abi.encodePacked(gnosisTx, _getGnosisTransaction(addressToHex(lrtSquared), registerEEigenToken, false)));
         }
         
-        ILRTSquared.StrategyConfig memory ethFiStrategyConfig = ILRTSquared.StrategyConfig({
+        ILRTSquared.StrategyConfig_DEPRECATED memory ethFiStrategyConfig = ILRTSquared.StrategyConfig_DEPRECATED({
             strategyAdapter: address(sEthFiStrategy),
             maxSlippageInBps: 1
         });
         string memory setEthFiStrategyConfig = iToHex(abi.encodeWithSignature("setTokenStrategyConfig(address,(address,uint96))", ethFi, ethFiStrategyConfig));
         gnosisTx = string(abi.encodePacked(gnosisTx, _getGnosisTransaction(addressToHex(lrtSquared), setEthFiStrategyConfig, false)));
 
-        ILRTSquared.StrategyConfig memory eigenStrategyConfig = ILRTSquared.StrategyConfig({
+        ILRTSquared.StrategyConfig_DEPRECATED memory eigenStrategyConfig = ILRTSquared.StrategyConfig_DEPRECATED({
             strategyAdapter: address(eEigenStrategy),
             maxSlippageInBps: 1
         });

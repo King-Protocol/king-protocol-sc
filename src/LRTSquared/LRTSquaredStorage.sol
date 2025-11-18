@@ -8,6 +8,7 @@ import {ERC20PermitUpgradeable} from
     "@openzeppelin-upgradeable/contracts/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import {UUPSUpgradeable, Initializable} from "@openzeppelin-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {IPriceProvider} from "src/interfaces/IPriceProvider.sol";
+import {IKingVault} from "../interfaces/IKingVault.sol";
 import {Governable} from "../governance/Governable.sol";
 import {PausableUpgradeable} from "@openzeppelin-upgradeable/contracts/utils/PausableUpgradeable.sol";
 import {BucketLimiter} from "../libraries/BucketLimiter.sol";
@@ -56,7 +57,12 @@ contract LRTSquaredStorage is
         uint48 redeemFeeInBps;
     }
 
-    struct StrategyConfig {
+    /**
+     * @notice DEPRECATED: Legacy strategy configuration
+     * @dev Maintained for storage layout compatibility - DO NOT USE
+     * @dev This struct is deprecated as of vault integration upgrade
+     */
+    struct StrategyConfig_DEPRECATED {
         address strategyAdapter;
         uint96 maxSlippageInBps;
     }
@@ -89,10 +95,16 @@ contract LRTSquaredStorage is
     uint256 public communityPauseDepositedAmt;
     // fee struct
     Fee public fee;
-    // strategy config for tokens
-    mapping(address token => StrategyConfig strategyConfig) public tokenStrategyConfig;
-    // max slippage for strategy = 1%
-    uint256 public constant MAX_SLIPPAGE_FOR_STRATEGY_IN_BPS = 100;
+    /**
+     * @notice DEPRECATED: Legacy strategy config mapping
+     * @dev Maintained for UUPS storage compatibility - DO NOT USE
+     */
+    mapping(address token => StrategyConfig_DEPRECATED strategyConfig) public tokenStrategyConfig_DEPRECATED;
+    /**
+     * @notice DEPRECATED: Legacy max slippage constant
+     * @dev Maintained for compatibility - DO NOT USE
+     */
+    uint256 public constant MAX_SLIPPAGE_FOR_STRATEGY_IN_BPS_DEPRECATED = 100;
     // keccak256("LRTSquared.admin.impl");
     bytes32 constant adminImplPosition = 0x67f3bdb99ec85305417f06f626cf52c7dee7e44607664b5f1cce0af5d822472f;
 
@@ -124,7 +136,11 @@ contract LRTSquaredStorage is
     event Rebalance(address fromAsset, address toAsset, uint256 fromAssetAmount, uint256 toAssetAmount);
     event FeeSet(Fee oldFee, Fee newFee);
     event TreasurySet(address oldTreasury, address newTreasury);
-    event StrategyConfigSet(address indexed token, address indexed strategyAdapter, uint96 maxSlippageInBps);
+    /**
+     * @notice DEPRECATED: Legacy strategy event
+     * @dev No longer emitted - maintained for compatibility only
+     */
+    event StrategyConfigSet_DEPRECATED(address indexed token, address indexed strategyAdapter, uint96 maxSlippageInBps);
 
     error TokenAlreadyRegistered();
     error TokenNotWhitelisted();
@@ -152,13 +168,17 @@ contract LRTSquaredStorage is
     error InsufficientTokensReceivedFromSwapper();
     error ApplicableSlippageGreaterThanMaxLimit();
     error AlreadyInSameState();
-    error StrategyAdapterCannotBeAddressZero();
-    error SlippageCannotBeGreaterThanMaxLimit();
+    /**
+     * @notice DEPRECATED: Legacy strategy errors
+     * @dev No longer used - maintained for compatibility only
+     */
+    error StrategyAdapterCannotBeAddressZero_DEPRECATED();
+    error SlippageCannotBeGreaterThanMaxLimit_DEPRECATED();
+    error TokenStrategyConfigNotSet_DEPRECATED();
+    error StrategyReturnTokenCannotBeAddressZero_DEPRECATED();
+    error StrategyReturnTokenNotRegistered_DEPRECATED();
+    error PriceProviderNotConfiguredForStrategyReturnToken_DEPRECATED();
     error AmountCannotBeZero();
-    error TokenStrategyConfigNotSet();
-    error StrategyReturnTokenCannotBeAddressZero();
-    error StrategyReturnTokenNotRegistered();
-    error PriceProviderNotConfiguredForStrategyReturnToken();
     error SharesCannotBeZero();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -204,18 +224,219 @@ contract LRTSquaredStorage is
         return (totalValue * vaultTokenShares) / totalSupply;
     }
 
-    function totalAssets() public view returns (address[] memory, uint256[] memory) {
-        address[] memory assets = tokens;
-        uint256 len = assets.length;
-        uint256[] memory assetAmounts = new uint256[](len);
-        for (uint256 i = 0; i < len;) {
+    /**
+     * @notice Get aggregated balances from all enabled vaults
+     * @dev Queries each enabled vault, falls back to principal on failure
+     * @dev Only includes whitelisted tokens in aggregation
+     * @return tokens_ Array of unique token addresses
+     * @return quantities Array of total quantities across all vaults
+     */
+    function getVaultBalances() public view returns (address[] memory tokens_, uint256[] memory quantities) {
+        uint256 tokenCount = tokens.length;
+        uint256[] memory aggregated = new uint256[](tokenCount);
+
+        // Iterate through all registered vaults
+        uint256 vaultCount = vaults.length;
+        for (uint256 i = 0; i < vaultCount;) {
+            address vault = vaults[i];
+
+            // Only query enabled vaults
+            if (isVaultEnabled(vault)) {
+                // Try to query vault balances
+                try IKingVault(vault).getBalances() returns (
+                    address[] memory vaultTokens, uint256[] memory vaultBalances
+                ) {
+                    // Aggregate balances by token
+                    for (uint256 j = 0; j < vaultTokens.length;) {
+                        address token = vaultTokens[j];
+
+                        // Find token index in our registry
+                        for (uint256 k = 0; k < tokenCount;) {
+                            if (tokens[k] == token && isTokenWhitelisted(token)) {
+                                aggregated[k] += vaultBalances[j];
+                                break;
+                            }
+                            unchecked {
+                                ++k;
+                            }
+                        }
+                        unchecked {
+                            ++j;
+                        }
+                    }
+                } catch {
+                    // Fallback to principal tracking on query failure
+                    for (uint256 j = 0; j < tokenCount;) {
+                        address token = tokens[j];
+                        if (isTokenWhitelisted(token)) {
+                            aggregated[j] += vaultPrincipal[vault][token];
+                        }
+                        unchecked {
+                            ++j;
+                        }
+                    }
+                }
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
+        return (tokens, aggregated);
+    }
+
+    /**
+     * @notice Get total assets across main contract and all enabled vaults
+     * @dev Optimized to use vault.getBalances() for batch queries (reduces external calls)
+     * @dev Reverts if any vault.getBalances() call fails (fail-fast behavior)
+     * @return assets Array of registered token addresses
+     * @return assetAmounts Array of total amounts for each token (main + all vaults)
+     */
+    function totalAssets() public view returns (address[] memory assets, uint256[] memory assetAmounts) {
+        assets = tokens;
+        uint256 tokenCount = assets.length;
+        assetAmounts = new uint256[](tokenCount);
+
+        // Get main contract balances for all registered tokens
+        for (uint256 i = 0; i < tokenCount;) {
             assetAmounts[i] = IERC20(assets[i]).balanceOf(address(this));
             unchecked {
                 ++i;
             }
         }
 
+        // Aggregate balances from all enabled vaults
+        uint256 vaultCount = vaults.length;
+        for (uint256 j = 0; j < vaultCount;) {
+            address vault = vaults[j];
+
+            // Only query enabled vaults
+            if (isVaultEnabled(vault)) {
+                // Get all balances from vault in single call
+                // Will revert if vault call fails (fail-fast behavior)
+                (address[] memory vaultTokens, uint256[] memory vaultBalances) = IKingVault(vault).getBalances();
+
+                // Validate array lengths match
+                uint256 vaultTokenCount = vaultTokens.length;
+                if (vaultTokenCount != vaultBalances.length) {
+                    revert ArrayLengthMismatch();
+                }
+
+                // Match vault tokens to registered tokens and aggregate
+                for (uint256 k = 0; k < vaultTokenCount;) {
+                    address vaultToken = vaultTokens[k];
+
+                    // Find matching registered token
+                    for (uint256 i = 0; i < tokenCount;) {
+                        if (assets[i] == vaultToken) {
+                            assetAmounts[i] += vaultBalances[k];
+                            break;
+                        }
+                        unchecked {
+                            ++i;
+                        }
+                    }
+
+                    unchecked {
+                        ++k;
+                    }
+                }
+            }
+
+            unchecked {
+                ++j;
+            }
+        }
+
         return (assets, assetAmounts);
+    }
+
+    /**
+     * @notice Get detailed breakdown of asset locations (main contract vs vaults)
+     * @dev Optimized to use vault.getBalances() for batch queries (reduces external calls)
+     * @dev Reverts if any vault.getBalances() call fails (fail-fast behavior)
+     * @return tokens_ Array of token addresses
+     * @return mainBalances Balances held in main contract
+     * @return vaultBalances Balances held in all vaults
+     * @return totalBalances Total balances (main + vaults)
+     */
+    function getAssetBreakdown()
+        external
+        view
+        returns (
+            address[] memory tokens_,
+            uint256[] memory mainBalances,
+            uint256[] memory vaultBalances,
+            uint256[] memory totalBalances
+        )
+    {
+        tokens_ = tokens;
+        uint256 tokenCount = tokens_.length;
+
+        mainBalances = new uint256[](tokenCount);
+        vaultBalances = new uint256[](tokenCount);
+        totalBalances = new uint256[](tokenCount);
+
+        // Get main contract balances for all registered tokens
+        for (uint256 i = 0; i < tokenCount;) {
+            mainBalances[i] = IERC20(tokens_[i]).balanceOf(address(this));
+            unchecked {
+                ++i;
+            }
+        }
+
+        // Aggregate balances from all enabled vaults
+        uint256 vaultCount = vaults.length;
+        for (uint256 j = 0; j < vaultCount;) {
+            address vault = vaults[j];
+
+            // Only query enabled vaults
+            if (isVaultEnabled(vault)) {
+                // Get all balances from vault in single call
+                // Will revert if vault call fails (fail-fast behavior)
+                (address[] memory vaultTokens, uint256[] memory vaultTokenBalances) = IKingVault(vault).getBalances();
+
+                // Validate array lengths match
+                uint256 vaultTokenCount = vaultTokens.length;
+                if (vaultTokenCount != vaultTokenBalances.length) {
+                    revert ArrayLengthMismatch();
+                }
+
+                // Match vault tokens to registered tokens and aggregate
+                for (uint256 k = 0; k < vaultTokenCount;) {
+                    address vaultToken = vaultTokens[k];
+
+                    // Find matching registered token
+                    for (uint256 i = 0; i < tokenCount;) {
+                        if (tokens_[i] == vaultToken) {
+                            vaultBalances[i] += vaultTokenBalances[k];
+                            break;
+                        }
+                        unchecked {
+                            ++i;
+                        }
+                    }
+
+                    unchecked {
+                        ++k;
+                    }
+                }
+            }
+
+            unchecked {
+                ++j;
+            }
+        }
+
+        // Calculate totals
+        for (uint256 i = 0; i < tokenCount;) {
+            totalBalances[i] = mainBalances[i] + vaultBalances[i];
+            unchecked {
+                ++i;
+            }
+        }
+
+        return (tokens_, mainBalances, vaultBalances, totalBalances);
     }
 
     function getTokenValuesInEth(address[] memory _tokens, uint256[] memory _amounts) public view returns (uint256) {
@@ -285,6 +506,242 @@ contract LRTSquaredStorage is
 
         emit FeeSet(fee, _fee);
         fee = _fee;
+    }
+
+    // ============================================
+    // VAULT SYSTEM STORAGE
+    // ============================================
+
+    /**
+     * @notice Information about a registered vault
+     * @dev Vaults are never removed from registry (audit trail)
+     * @dev Accepted assets are determined by calling vault.assets()
+     * @param registered True if vault has been registered
+     * @param enabled True if vault is currently enabled for operations
+     */
+    struct VaultInfo {
+        bool registered;
+        bool enabled;
+    }
+
+    /**
+     * @notice Registry of all vaults
+     * @dev Array never shrinks (immutable audit trail)
+     */
+    address[] public vaults;
+
+    /**
+     * @notice Detailed information for each vault
+     * @dev mapping(vaultAddress => VaultInfo)
+     */
+    mapping(address => VaultInfo) internal _vaultInfos;
+
+    /**
+     * @notice Track principal (deposited assets) in each vault per token
+     * @dev mapping(vaultAddress => mapping(tokenAddress => amount))
+     * @dev Critical for preventing vault disable when holding assets
+     */
+    mapping(address => mapping(address => uint256)) public vaultPrincipal;
+
+    // ============================================
+    // VAULT EVENTS
+    // ============================================
+
+    /**
+     * @notice Emitted when a new vault is registered
+     * @param vault Address of the registered vault
+     * @param acceptedAssets Array of assets this vault accepts
+     * @param enabled Initial enabled status
+     */
+    event VaultRegistered(address indexed vault, address[] acceptedAssets, bool enabled);
+
+    /**
+     * @notice Emitted when a vault is enabled
+     * @param vault Address of the enabled vault
+     */
+    event VaultEnabled(address indexed vault);
+
+    /**
+     * @notice Emitted when a vault is disabled
+     * @param vault Address of the disabled vault
+     */
+    event VaultDisabled(address indexed vault);
+
+    /**
+     * @notice Emitted when assets are deposited to a vault
+     * @param vault Address of the vault
+     * @param asset Address of the asset deposited
+     * @param amount Amount deposited
+     * @param shares Vault shares received
+     */
+    event DepositedToVault(address indexed vault, address indexed asset, uint256 amount, uint256 shares);
+
+    /**
+     * @notice Emitted when assets are withdrawn from a vault
+     * @param vault Address of the vault
+     * @param asset Address of the asset withdrawn
+     * @param amount Amount requested
+     * @param actualAmount Actual amount received
+     */
+    event WithdrawnFromVault(address indexed vault, address indexed asset, uint256 amount, uint256 actualAmount);
+
+    /**
+     * @notice Emitted when a vault is paused
+     * @param vault Address of the paused vault
+     */
+    event VaultPaused(address indexed vault);
+
+    /**
+     * @notice Emitted when a vault is unpaused
+     * @param vault Address of the unpaused vault
+     */
+    event VaultUnpaused(address indexed vault);
+
+    /**
+     * @notice Emitted when all vaults are paused
+     * @param count Number of vaults paused
+     */
+    event AllVaultsPaused(uint256 count);
+
+    /**
+     * @notice Emitted when emergency withdrawal is performed
+     * @param vault Address of the vault
+     * @param tokens Array of tokens withdrawn
+     * @param amounts Array of amounts withdrawn
+     */
+    event EmergencyWithdrawal(address indexed vault, address[] tokens, uint256[] amounts);
+
+    // ============================================
+    // VAULT ERRORS
+    // ============================================
+
+    /**
+     * @notice Thrown when vault address is zero
+     */
+    error VaultCannotBeZeroAddress();
+
+    /**
+     * @notice Thrown when vault is already registered
+     */
+    error VaultAlreadyRegistered();
+
+    /**
+     * @notice Thrown when vault is not registered
+     */
+    error VaultNotRegistered();
+
+    /**
+     * @notice Thrown when attempting to disable vault with active principal
+     * @param vault Address of the vault
+     * @param token Address of the token with principal
+     * @param amount Amount of principal that must be withdrawn first
+     */
+    error VaultHasPrincipal(address vault, address token, uint256 amount);
+
+    /**
+     * @notice Thrown when vault is not enabled
+     */
+    error VaultNotEnabled();
+
+    /**
+     * @notice Thrown when asset is not accepted by vault
+     * @param vault Address of the vault
+     * @param asset Address of the asset
+     */
+    error AssetNotAcceptedByVault(address vault, address asset);
+
+    /**
+     * @notice Thrown when contract has insufficient token balance for operation
+     */
+    error InsufficientTokenBalance();
+
+    /**
+     * @notice Thrown when attempting to withdraw more than tracked principal
+     * @param vault Address of the vault
+     * @param asset Address of the asset
+     * @param principal Current principal balance
+     * @param requested Requested withdrawal amount
+     */
+    error InsufficientPrincipal(address vault, address asset, uint256 principal, uint256 requested);
+
+    /**
+     * @notice Thrown when vault does not implement ERC165
+     */
+    error VaultDoesNotSupportERC165();
+
+    /**
+     * @notice Thrown when vault does not support IKingVault interface
+     */
+    error NotKingVault();
+
+    // ============================================
+    // VAULT VIEW FUNCTIONS
+    // ============================================
+
+    /**
+     * @notice Check if a vault is registered
+     * @param vault Address of the vault to check
+     * @return True if vault is registered
+     */
+    function isVaultRegistered(address vault) public view returns (bool) {
+        return _vaultInfos[vault].registered;
+    }
+
+    /**
+     * @notice Check if a vault is enabled
+     * @param vault Address of the vault to check
+     * @return True if vault is registered and enabled
+     */
+    function isVaultEnabled(address vault) public view returns (bool) {
+        return _vaultInfos[vault].registered && _vaultInfos[vault].enabled;
+    }
+
+    /**
+     * @notice Check if a vault accepts a specific asset
+     * @dev Queries vault's assets() function dynamically
+     * @param vault Address of the vault
+     * @param asset Address of the asset
+     * @return True if vault's assets() array includes the asset
+     */
+    function isAssetAcceptedByVault(address vault, address asset) public view returns (bool) {
+        // Return false for unregistered vaults
+        if (!_vaultInfos[vault].registered) return false;
+
+        // Query vault's assets
+        try IKingVault(vault).assets() returns (address[] memory vaultAssets) {
+            // Check if asset is in vault's assets array
+            for (uint256 i = 0; i < vaultAssets.length;) {
+                if (vaultAssets[i] == asset) {
+                    return true;
+                }
+                unchecked {
+                    ++i;
+                }
+            }
+            return false;
+        } catch {
+            // If vault call fails, treat as not accepting the asset
+            return false;
+        }
+    }
+
+    /**
+     * @notice Get all registered vaults
+     * @return Array of vault addresses
+     */
+    function allVaults() external view returns (address[] memory) {
+        return vaults;
+    }
+
+    /**
+     * @notice Get vault information
+     * @param vault Address of the vault
+     * @return registered True if vault is registered
+     * @return enabled True if vault is enabled
+     */
+    function vaultInfo(address vault) external view returns (bool registered, bool enabled) {
+        VaultInfo storage info = _vaultInfos[vault];
+        return (info.registered, info.enabled);
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyGovernor {}

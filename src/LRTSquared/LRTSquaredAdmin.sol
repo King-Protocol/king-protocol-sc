@@ -11,6 +11,8 @@ import {
     ISwapper
 } from "./LRTSquaredStorage.sol";
 import {BaseStrategy} from "../strategies/BaseStrategy.sol";
+import {IKingVault} from "../interfaces/IKingVault.sol";
+import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 
 contract LRTSquaredAdmin is LRTSquaredStorage {
     using BucketLimiter for BucketLimiter.Limit;
@@ -201,36 +203,402 @@ contract LRTSquaredAdmin is LRTSquaredStorage {
         depositForCommunityPause = amount;
     }
 
-    function setTokenStrategyConfig(address token, StrategyConfig memory strategyConfig) external onlyGovernor {
+    // ============================================
+    // VAULT REGISTRATION AND MANAGEMENT
+    // ============================================
+
+    /**
+     * @notice Register a new vault
+     * @dev Can only be called by governor
+     * @dev Vaults are NEVER removed from mapping for audit trail
+     * @dev Validates vault implements IKingVault via ERC165 and all vault assets are registered in main contract
+     * @param _vault Address of the vault to register (must implement IKingVault interface)
+     */
+    function registerVault(address _vault) external onlyGovernor {
+        // Validation
+        if (_vault == address(0)) revert VaultCannotBeZeroAddress();
+
+        // Validate vault implements ERC165 and IKingVault interface
+        // This prevents malicious contracts from bypassing validation by only implementing assets()
+        try IERC165(_vault).supportsInterface(type(IKingVault).interfaceId) returns (bool supported) {
+            if (!supported) revert NotKingVault();
+        } catch {
+            revert VaultDoesNotSupportERC165();
+        }
+
+        // Validate vault implements IKingVault interface by calling assets()
+        // This will revert if vault doesn't implement the interface correctly
+        address[] memory vaultAssets = IKingVault(_vault).assets();
+        if (vaultAssets.length == 0) revert InvalidValue();
+
+        // Validate ALL vault assets are registered in main contract
+        for (uint256 i = 0; i < vaultAssets.length;) {
+            if (!isTokenRegistered(vaultAssets[i])) revert TokenNotRegistered();
+            unchecked {
+                ++i;
+            }
+        }
+
+        // If not already registered, add to vaults array
+        if (!_vaultInfos[_vault].registered) {
+            _vaultInfos[_vault].registered = true;
+            vaults.push(_vault);
+        }
+
+        // Enable vault by default on registration
+        _vaultInfos[_vault].enabled = true;
+
+        emit VaultRegistered(_vault, vaultAssets, true);
+    }
+
+    /**
+     * @notice Enable a registered vault
+     * @dev Can only be called by governor
+     * @dev Vault must be registered first
+     * @param _vault Address of the vault to enable
+     */
+    function enableVault(address _vault) external onlyGovernor {
+        if (!isVaultRegistered(_vault)) revert VaultNotRegistered();
+
+        _vaultInfos[_vault].enabled = true;
+
+        emit VaultEnabled(_vault);
+    }
+
+    /**
+     * @notice Disable a registered vault
+     * @dev Can only be called by governor
+     * @dev CRITICAL: Cannot disable vault that holds principal (deposited assets)
+     * @dev Must withdraw all assets before disabling
+     * @param _vault Address of the vault to disable
+     */
+    function disableVault(address _vault) external onlyGovernor {
+        if (!isVaultRegistered(_vault)) revert VaultNotRegistered();
+
+        // CRITICAL SAFETY CHECK: Verify vault has no principal
+        // Check all registered tokens
+        for (uint256 i = 0; i < tokens.length;) {
+            address token = tokens[i];
+            uint256 principal = vaultPrincipal[_vault][token];
+
+            if (principal > 0) {
+                revert VaultHasPrincipal(_vault, token, principal);
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        _vaultInfos[_vault].enabled = false;
+
+        emit VaultDisabled(_vault);
+    }
+
+    /**
+     * @notice Deposit assets from main contract into a registered vault
+     * @dev Only governor can execute vault operations
+     * @param _vault The vault address to deposit into
+     * @param _asset The token address to deposit
+     * @param _amount The amount to deposit
+     * @return shares The vault shares received
+     *
+     * Requirements:
+     * - Vault must be registered and enabled
+     * - Asset must be accepted by the vault
+     * - Contract must have sufficient token balance
+     * - Deposit must not breach position weight limits
+     *
+     * Effects:
+     * - Transfers tokens from contract to vault
+     * - Updates vaultPrincipal tracking
+     * - Emits DepositedToVault event
+     */
+    function depositToVault(address _vault, address _asset, uint256 _amount)
+        external
+        onlyGovernor
+        returns (uint256 shares)
+    {
+        // Validation checks
+        if (!isVaultRegistered(_vault)) revert VaultNotRegistered();
+        if (!isVaultEnabled(_vault)) revert VaultNotEnabled();
+        if (!isAssetAcceptedByVault(_vault, _asset)) revert AssetNotAcceptedByVault(_vault, _asset);
+        if (_amount == 0) revert AmountCannotBeZero();
+
+        // Check contract has sufficient balance
+        uint256 contractBalance = IERC20(_asset).balanceOf(address(this));
+        if (contractBalance < _amount) revert InsufficientTokenBalance();
+
+        // Verify position weight limits after deposit
+        // This ensures the vault doesn't cause the asset to exceed its weight limit
+        _verifyPositionLimits();
+
+        // Approve vault to spend tokens
+        IERC20(_asset).safeIncreaseAllowance(_vault, _amount);
+
+        // Execute deposit to external vault
+        shares = IKingVault(_vault).deposit(_asset, _amount);
+
+        // Update principal tracking (critical for fund safety)
+        vaultPrincipal[_vault][_asset] += _amount;
+
+        emit DepositedToVault(_vault, _asset, _amount, shares);
+    }
+
+    /**
+     * @notice Withdraw assets from a registered vault back to main contract
+     * @dev Only governor can execute vault operations
+     * @param _vault The vault address to withdraw from
+     * @param _asset The token address to withdraw
+     * @param _amount The amount to withdraw
+     * @return actualAmount The actual amount received (may differ due to fees/slippage)
+     *
+     * Requirements:
+     * - Vault must be registered
+     * - Must have sufficient principal tracked for this vault/asset pair
+     * - Receiver is always this contract (funds return to main contract)
+     *
+     * Effects:
+     * - Withdraws tokens from vault to this contract
+     * - Updates vaultPrincipal tracking (decreases by amount)
+     * - Emits WithdrawnFromVault event
+     *
+     * Security:
+     * - Validates sufficient principal before withdrawal
+     * - Updates principal based on requested amount, not actual
+     * - Prevents withdrawing more than deposited principal
+     */
+    function withdrawFromVault(address _vault, address _asset, uint256 _amount)
+        external
+        onlyGovernor
+        returns (uint256 actualAmount)
+    {
+        // Validation checks
+        if (!isVaultRegistered(_vault)) revert VaultNotRegistered();
+        if (_amount == 0) revert AmountCannotBeZero();
+
+        // Check sufficient principal tracking
+        uint256 principal = vaultPrincipal[_vault][_asset];
+        if (principal < _amount) revert InsufficientPrincipal(_vault, _asset, principal, _amount);
+
+        // Update principal BEFORE external call (checks-effects-interactions pattern)
+        vaultPrincipal[_vault][_asset] = principal - _amount;
+
+        // Execute withdrawal from external vault (receiver is this contract)
+        actualAmount = IKingVault(_vault).withdraw(_asset, _amount, address(this));
+
+        emit WithdrawnFromVault(_vault, _asset, _amount, actualAmount);
+    }
+
+    // ============================================
+    // EMERGENCY CONTROLS
+    // ============================================
+
+    /**
+     * @notice Pause a specific vault
+     * @dev Only governor can pause vaults
+     * @dev Calls the vault's pause() function
+     * @param _vault Address of the vault to pause
+     *
+     * Requirements:
+     * - Vault must be registered
+     * - Vault must implement pause() function
+     *
+     * Effects:
+     * - Calls external vault's pause() function
+     * - Emits VaultPaused event
+     */
+    function pauseVault(address _vault) external onlyGovernor {
+        if (!isVaultRegistered(_vault)) revert VaultNotRegistered();
+
+        // Call external vault's pause function
+        IKingVault(_vault).pause();
+
+        emit VaultPaused(_vault);
+    }
+
+    /**
+     * @notice Unpause a specific vault
+     * @dev Only governor can unpause vaults
+     * @dev Calls the vault's unpause() function
+     * @param _vault Address of the vault to unpause
+     *
+     * Requirements:
+     * - Vault must be registered
+     * - Vault must implement unpause() function
+     *
+     * Effects:
+     * - Calls external vault's unpause() function
+     * - Emits VaultUnpaused event
+     */
+    function unpauseVault(address _vault) external onlyGovernor {
+        if (!isVaultRegistered(_vault)) revert VaultNotRegistered();
+
+        // Call external vault's unpause function
+        IKingVault(_vault).unpause();
+
+        emit VaultUnpaused(_vault);
+    }
+
+    /**
+     * @notice Pause all registered vaults
+     * @dev Emergency function to halt all vault operations
+     * @dev Continues on individual vault failures to ensure maximum vaults are paused
+     * @dev Only governor can execute
+     *
+     * Effects:
+     * - Attempts to pause each registered vault
+     * - Continues even if individual vaults revert
+     * - Emits AllVaultsPaused event with count of successfully paused vaults
+     *
+     * Security:
+     * - Does not revert if individual vault pause fails
+     * - Ensures maximum protection by pausing as many vaults as possible
+     * - Governor-only access
+     */
+    function pauseAllVaults() external onlyGovernor {
+        uint256 vaultCount = vaults.length;
+        uint256 successCount = 0;
+
+        for (uint256 i = 0; i < vaultCount;) {
+            address vault = vaults[i];
+
+            // Try to pause vault, continue on failure
+            try IKingVault(vault).pause() {
+                emit VaultPaused(vault);
+                successCount++;
+            } catch {
+                // Continue to next vault on failure
+                // Individual vault pause failures don't stop the emergency procedure
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        emit AllVaultsPaused(successCount);
+    }
+
+    /**
+     * @notice Perform emergency withdrawal from a vault
+     * @dev Works even when vault is paused
+     * @dev Withdraws ALL assets and resets principal to zero
+     * @dev Only governor can execute
+     *
+     * @param _vault Address of the vault to withdraw from
+     *
+     * Requirements:
+     * - Vault must be registered
+     * - Vault must implement emergencyWithdraw() function
+     *
+     * Effects:
+     * - Queries principal for all registered tokens
+     * - Calls emergencyWithdraw for each asset with non-zero principal
+     * - Resets vaultPrincipal to zero for all assets
+     * - Emits EmergencyWithdrawal event
+     *
+     * Security:
+     * - Works even when vault is paused
+     * - Resets principal tracking to prevent future issues
+     * - Governor-only access
+     * - Uses checks-effects-interactions pattern
+     */
+    function emergencyWithdrawal(address _vault) external onlyGovernor {
+        if (!isVaultRegistered(_vault)) revert VaultNotRegistered();
+
+        // Track withdrawn assets for event emission
+        address[] memory withdrawnTokens = new address[](tokens.length);
+        uint256[] memory withdrawnAmounts = new uint256[](tokens.length);
+        uint256 withdrawnCount = 0;
+
+        // Iterate through all registered tokens
+        for (uint256 i = 0; i < tokens.length;) {
+            address token = tokens[i];
+            uint256 principal = vaultPrincipal[_vault][token];
+
+            // Only withdraw if vault has principal for this token
+            if (principal > 0) {
+                // Reset principal BEFORE external call (checks-effects-interactions)
+                vaultPrincipal[_vault][token] = 0;
+
+                // Emergency withdraw from vault
+                // Note: Using emergencyWithdraw instead of regular withdraw
+                // as it works even when vault is paused
+                try IKingVault(_vault).emergencyWithdraw(token, principal, address(this)) returns (
+                    uint256 actualAmount
+                ) {
+                    // Track for event
+                    withdrawnTokens[withdrawnCount] = token;
+                    withdrawnAmounts[withdrawnCount] = actualAmount;
+                    withdrawnCount++;
+                } catch {
+                    // If emergency withdraw fails, principal is already reset
+                    // This is acceptable in emergency scenarios
+                    // Track as zero withdrawn
+                    withdrawnTokens[withdrawnCount] = token;
+                    withdrawnAmounts[withdrawnCount] = 0;
+                    withdrawnCount++;
+                }
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        // Trim arrays to actual withdrawn count
+        address[] memory finalTokens = new address[](withdrawnCount);
+        uint256[] memory finalAmounts = new uint256[](withdrawnCount);
+        for (uint256 i = 0; i < withdrawnCount;) {
+            finalTokens[i] = withdrawnTokens[i];
+            finalAmounts[i] = withdrawnAmounts[i];
+            unchecked {
+                ++i;
+            }
+        }
+
+        emit EmergencyWithdrawal(_vault, finalTokens, finalAmounts);
+    }
+
+    /**
+     * @notice DEPRECATED: Legacy strategy config function
+     * @dev Maintained for compatibility - DO NOT USE
+     */
+    function setTokenStrategyConfig(address token, StrategyConfig_DEPRECATED memory strategyConfig) external onlyGovernor {
         if (token == address(0)) revert InvalidValue();
         if (!isTokenRegistered(token)) revert TokenNotRegistered();
         if (IPriceProvider(priceProvider).getPriceInEth(token) == 0) revert PriceProviderNotConfigured();
 
-        if (strategyConfig.strategyAdapter == address(0)) revert StrategyAdapterCannotBeAddressZero();
-        if (strategyConfig.maxSlippageInBps > MAX_SLIPPAGE_FOR_STRATEGY_IN_BPS) {
-            revert SlippageCannotBeGreaterThanMaxLimit();
+        if (strategyConfig.strategyAdapter == address(0)) revert StrategyAdapterCannotBeAddressZero_DEPRECATED();
+        if (strategyConfig.maxSlippageInBps > MAX_SLIPPAGE_FOR_STRATEGY_IN_BPS_DEPRECATED) {
+            revert SlippageCannotBeGreaterThanMaxLimit_DEPRECATED();
         }
 
         address returnToken = BaseStrategy(strategyConfig.strategyAdapter).returnToken();
-        if (returnToken == address(0)) revert StrategyReturnTokenCannotBeAddressZero();
-        if (!isTokenRegistered(returnToken)) revert StrategyReturnTokenNotRegistered();
+        if (returnToken == address(0)) revert StrategyReturnTokenCannotBeAddressZero_DEPRECATED();
+        if (!isTokenRegistered(returnToken)) revert StrategyReturnTokenNotRegistered_DEPRECATED();
         if (IPriceProvider(priceProvider).getPriceInEth(returnToken) == 0) {
-            revert PriceProviderNotConfiguredForStrategyReturnToken();
+            revert PriceProviderNotConfiguredForStrategyReturnToken_DEPRECATED();
         }
 
-        tokenStrategyConfig[token] = strategyConfig;
-        emit StrategyConfigSet(token, strategyConfig.strategyAdapter, strategyConfig.maxSlippageInBps);
+        tokenStrategyConfig_DEPRECATED[token] = strategyConfig;
+        emit StrategyConfigSet_DEPRECATED(token, strategyConfig.strategyAdapter, strategyConfig.maxSlippageInBps);
     }
 
+    /**
+     * @notice DEPRECATED: Legacy strategy deposit function
+     * @dev Maintained for compatibility - DO NOT USE
+     */
     function depositToStrategy(address token, uint256 amount) external onlyGovernor {
         if (amount == type(uint256).max) amount = IERC20(token).balanceOf(address(this));
         if (amount == 0) revert AmountCannotBeZero();
 
-        if (tokenStrategyConfig[token].strategyAdapter == address(0)) revert TokenStrategyConfigNotSet();
+        if (tokenStrategyConfig_DEPRECATED[token].strategyAdapter == address(0)) revert TokenStrategyConfigNotSet_DEPRECATED();
         delegateCall(
-            tokenStrategyConfig[token].strategyAdapter,
+            tokenStrategyConfig_DEPRECATED[token].strategyAdapter,
             abi.encodeWithSelector(
-                BaseStrategy.deposit.selector, token, amount, tokenStrategyConfig[token].maxSlippageInBps
+                BaseStrategy.deposit.selector, token, amount, tokenStrategyConfig_DEPRECATED[token].maxSlippageInBps
             )
         );
 
